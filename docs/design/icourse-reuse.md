@@ -1,20 +1,47 @@
-# 个人 icourse 实现复用
+# 课程订阅与持久化设计
 
-参考仓库：`AlexbeatsZ/Fudan_iCourse_Subscriber`，本地 checkout 名为 `icourse`，检查时 HEAD 为 `afcbd98e1542db01fefb425cbdb0edb3f494e132`。源项目只读，保留其已有改动与部署。
+本项目复用了成熟的个人课程归档系统中的订阅管理思路，但不复用其他教学平台的课程 ID 或登录接口。
 
-| 原实现 | 本项目复用 |
+## 订阅模型
+
+| 设计 | 本项目实现 |
 | --- | --- |
-| `src/runtime/config.py` 邮箱配置 | 继续支持 `SMTP_EMAIL / SMTP_PASSWORD / RECEIVER_EMAIL`，QQ SMTP 默认值一致 |
-| `src/api/emailer.py` SMTP SSL 发送 | 沿用标准库 SMTP 和邮箱授权码方式；邮件内容改为两份 Office 附件，新增 587 STARTTLS 与大小分批 |
-| `src/data/crypto_box.py` | 将 ICSv2 密钥派生、100000 轮 PBKDF2、OpenSSL `Salted__` AES-256-CBC 封装移植到 Node `src/state.mjs` |
-| `local_replay.py::write_json` | `src/platform.mjs::saveJson` 采用同样的写临时文件、flush/fsync、原子重命名策略 |
-| `local_replay.py::download_video` | 采用字节范围、稳定版本校验、完整大小与完成记录，避免错误续传或覆盖未知成品 |
-| `local_replay.py::timeline` 和 `docs/design/rog-library.md` | 保留时间 0 与回翻页事件，图片去重不删除时间事件，字幕使用原始精确时间 |
-| `scripts/check_new_replays.py` | 轻量发现后才处理新课节；正常空结果和登录/网络错误分开，失败不会伪装成“没有新课” |
-| `src/data/database.py` 的 `emailed_at` 与加密 data 分支 | 每个渠道成功后才记账，GitHub `archive-state` 独立分支持久保存加密记录，不依赖缓存长期有效 |
+| 程序与个人数据分离 | `main` 保存代码；每个 Fork 自己创建 `data` 分支 |
+| 持久订阅清单 | `data/subscriptions.json` 保存 `course_ids` 数组 |
+| 运行时课程输入 | 从订阅清单解析为进程内 `COURSE_IDS`，不要求配置 Secret |
+| 单次处理 | `single` 工作流输入临时覆盖本轮课程集合；已有订阅清单不被修改 |
+| 首次初始化 | 首次执行创建 `data` 分支和空订阅清单；首次 `single` 可用输入 ID 初始化清单 |
+| 增量状态 | `data/delivery-state.enc` 保存加密回放处理与渠道发送记录 |
 
-学校登录、课程发现接口不同：复旦 iCourse 的 WebVPN/CAS 不能直接用于超星。因此保留适配层，而不引入原仓库的 ASR、OCR、摘要模型或 WebVPN 专用依赖。
+课程 ID 必须使用超星智播课堂课程列表接口返回的 `courseinfoid`。回放 ID 使用 `speechid`。这两个标识分别对应课程和课节，不可混用，也不能直接拿其他平台的课程 ID 替代。
 
-原仓库 README 与当前 AGENTS 状态存在历史表述差异：自动邮件已从其日常检查流程中停用，但 SMTP 导出代码和配置仍存在。本项目复用这些可用部分，不重新启用原有流程。
+## 与平台 API 的边界
 
-GitHub 状态更新使用普通 Contents API 提交和并发校验，不照搬原工作流里的 force push。
+订阅清单只保存稳定的课程 ID，不保存课程名称、登录凭据、课程入口 URL 或回放签名链接。每次运行仍通过当前登录账号重新发现可访问课程，并将订阅 ID 与当前课程列表匹配；如果某个 ID 已不在当前账号可访问列表中，程序会明确报错，不会猜测或退回到名称匹配。
+
+超星智播课堂与其他教学平台的登录和课程 API 不同。本项目只复用订阅清单、首次初始化、单次运行覆盖和持久化状态这些架构，不复用其他平台的 WebVPN/CAS、课程发现 API 或 ID 命名空间。
+
+## 持久状态与迁移
+
+`data` 分支同时保存明文订阅配置和加密发送状态：
+
+- `data/subscriptions.json`：只包含课程 ID 数组，供用户自行编辑。
+- `data/delivery-state.enc`：使用与现有实现兼容的 `Salted__` AES-256-CBC + PBKDF2 封装保存完成记录。
+
+旧版本曾将加密发送记录保存在 `archive-state/delivery-state.enc`。新版本优先读取 `data/delivery-state.enc`；如果不存在，则读取旧分支作为迁移来源，并在下一次成功发送时写入 `data` 分支。不会强制覆盖或删除旧分支。
+
+每个发送渠道成功后单独记账。重跑时只继续未完成渠道；SMTP 服务器接受邮件不等于收件箱最终投递，因此仍需区分发送确认和实际收件。
+
+## 仍然保留的平台专用实现
+
+- 超星账号登录与登录态：`src/auth.mjs`。
+- 课程列表、课程详情和回放分页：`src/discover.mjs`。
+- 回放元数据、字幕时间轴和视频下载：`src/platform.mjs`。
+- 课件帧提取与 Office 文档生成：`src/media.mjs`、`src/automatic.mjs`、`src/export.mjs`。
+
+## 设计约束
+
+- 每个 Fork 的 `data` 分支只服务于该 Fork，不读取原作者或其他用户的订阅配置。
+- 不将课程 ID 放入 GitHub Secrets；Secrets 只保存登录、邮件和加密密钥等凭据。
+- 不将明文视频、字幕或生成文档写入公开 Git 分支或公开 Actions Artifact。
+- 课程 ID 可能在不同学校、学期或平台部署中具有不同含义；以当前账号实际发现的 `courseinfoid` 为准。
