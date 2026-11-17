@@ -37,18 +37,19 @@ function apiFor(repository, token) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository || '')) throw new Error('GITHUB_REPOSITORY 无效。');
   if (!token) throw new Error('缺少 GITHUB_TOKEN，无法读取个人订阅分支。');
   return async function api(path, options = {}) {
+    const { allowMissing, ...requestOptions } = options;
     const response = await fetch('https://api.github.com/repos/' + repository + (path ? '/' + path : ''), {
-      ...options,
+      ...requestOptions,
       headers: {
         Authorization: 'Bearer ' + token,
         Accept: 'application/vnd.github+json',
         'Content-Type': 'application/json',
         'X-GitHub-Api-Version': '2022-11-28',
-        ...options.headers,
+        ...requestOptions.headers,
       },
       signal: AbortSignal.timeout(60000),
     });
-    if (response.status === 404 && options.allowMissing) return null;
+    if (response.status === 404 && allowMissing) return null;
     if (!response.ok) {
       throw new Error('GitHub 订阅配置请求失败 HTTP ' + response.status + '。');
     }
