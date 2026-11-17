@@ -152,16 +152,10 @@ uv sync --locked
 本地查看课程 ID：
 
 ```bash
-node src/cli.mjs discover "智播课堂课程列表链接"
-```
-
-或运行：
-
-```bash
 node src/run.mjs --discover
 ```
 
-如果首次需要交互式登录，将 `COURSE_HEADLESS=false`，在弹出的浏览器中正常登录；之后可恢复 `true` 复用项目独立浏览器配置。浏览器配置保存在 `local-data/`，不要分享或提交。
+该命令只列出课程 ID，不会扫描每门课程的回放。如果首次需要交互式登录，将 `COURSE_HEADLESS=false`，在弹出的浏览器中正常登录；之后可恢复 `true` 复用项目独立浏览器配置。浏览器配置保存在 `local-data/`，不要分享或提交。
 
 本地/ROG 没有 GitHub 订阅分支时，可以在 `.env` 中使用 `COURSE_IDS=课程ID1,课程ID2` 作为本地回退配置。GitHub Actions 不读取这个变量，而以 `data/subscriptions.json` 为准。
 
