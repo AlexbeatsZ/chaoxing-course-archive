@@ -63,7 +63,7 @@ QQ 邮箱通常不需要额外设置服务器参数，默认值为 `SMTP_HOST=sm
 
 第一次执行时，程序会在当前 Fork 中创建独立的 `data` 分支和空的 `data/subscriptions.json`。课程发现只读取课程列表，不下载视频。
 
-**公开仓库的 Actions 日志可能对公众可见。** `discover` 日志会显示课程名称和 ID。如果不希望公开课程名称，请在本机运行 `node src/cli.mjs discover "课程列表链接"`，在本地查看生成的 `local-data/catalog.private.json`。
+**公开仓库的 Actions 日志可能对公众可见。** `discover` 日志会显示课程名称和 ID。如果不希望公开课程名称，请在本机运行 `node src/run.mjs --discover`，在本地查看终端输出和 `local-data/catalog.private.json`。
 
 ## 7. 设置长期订阅
 
