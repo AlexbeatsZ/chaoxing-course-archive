@@ -1,0 +1,12 @@
+node_modules/
+local-data/
+.env
+.env.*
+!.env.example
+*.part
+.DS_Store
+coverage/
+work/
+.venv/
+__pycache__/
+*.pyc
