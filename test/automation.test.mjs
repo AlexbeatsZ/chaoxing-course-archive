@@ -4,7 +4,7 @@ import { createDecipheriv, pbkdf2Sync } from 'node:crypto';
 import { publishedReplays, courseRecordParameters, selectCourses } from '../src/discover.mjs';
 import { encryptLoginField, loginWithSecrets } from '../src/auth.mjs';
 import { encryptState, decryptState, statePassword, mergeState } from '../src/state.mjs';
-import { deliveryChannels, pendingReplays } from '../src/run.mjs';
+import { courseDiscoverySummary, deliveryChannels, pendingReplays } from '../src/run.mjs';
 import { safeMessage } from '../src/logging.mjs';
 import { readFile } from 'node:fs/promises';
 import YAML from 'yaml';
@@ -66,20 +66,30 @@ test('incremental delivery continues the unfinished channel and prioritizes rece
   assert.throws(() => deliveryChannels('typo'));
 });
 
-test('Actions default to an email-only test and keep course data out of public artifacts', async () => {
+test('Actions default to course discovery and keep video processing separate', async () => {
   const raw = await readFile(new URL('../.github/workflows/course.yml', import.meta.url), 'utf8');
   const workflow = YAML.parse(raw);
-  assert.equal(workflow.on.workflow_dispatch.inputs.operation.default, 'mail-test');
-  assert.deepEqual(workflow.on.workflow_dispatch.inputs.operation.options, ['mail-test', 'discover', 'run', 'single']);
-  assert.equal(workflow.on.workflow_dispatch.inputs.course_ids.type, 'string');
+  assert.equal(workflow.on.workflow_dispatch.inputs.operation.default, 'discover');
+  assert.deepEqual(workflow.on.workflow_dispatch.inputs.operation.options, ['discover', 'mail-test', 'run']);
+  assert.deepEqual(Object.keys(workflow.on.workflow_dispatch.inputs), ['operation', 'max_lectures']);
   assert.match(workflow.jobs.course.if, /vars\.RUN_SCHEDULED == 'true'/);
-  const mail = workflow.jobs.course.steps.find(s => s.name === 'Check email only');
-  assert.equal(mail.run, 'node src/run.mjs --mail-test');
-  assert.equal(mail.if, "env.COURSE_OPERATION == 'mail-test'");
+  const steps = workflow.jobs.course.steps;
+  assert.equal(steps.find(s => s.run === 'node src/run.mjs --discover').if, "env.COURSE_OPERATION == 'discover'");
+  assert.equal(steps.find(s => s.run === 'node src/run.mjs --mail-test').if, "env.COURSE_OPERATION == 'mail-test'");
+  assert.equal(steps.find(s => s.run === 'node src/run.mjs').if, "env.COURSE_OPERATION == 'run'");
   assert.ok(!workflow.jobs.course.steps.some(s => s.uses?.startsWith('actions/upload-artifact')));
   for (const step of workflow.jobs.course.steps.filter(s => s.uses?.startsWith('actions/cache/'))) {
     assert.equal(step.with.path, 'local-data/state/delivery-state.enc');
   }
+});
+
+test('course discovery pairs each name with its ID and links to the current fork', () => {
+  const summary = courseDiscoverySummary([
+    { name: '文学 | 研读', id: '10001' }, { name: '数学\n进阶', id: '10002' },
+  ], 'student/course-archive');
+  assert.match(summary, /\| 文学 &#124; 研读 \| `10001` \|/);
+  assert.match(summary, /\| 数学 进阶 \| `10002` \|/);
+  assert.match(summary, /https:\/\/github\.com\/student\/course-archive\/edit\/data\/data\/subscriptions\.json/);
 });
 
 test('network logs hide signed URLs and Playwright request dumps', () => {

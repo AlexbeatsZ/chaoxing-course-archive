@@ -34,7 +34,7 @@ def plan_messages(files, limit):
     for file in files:
         file_size = Path(file).stat().st_size
         if file_size > limit:
-            raise ValueError("单个附件超出邮件大小限制。文件已保留在本机，请提高合法限额或改用 ROG QQ 发送。")
+            raise ValueError("单个附件超出邮件大小限制。请核对邮箱附件上限，或改用本地运行并直接取用输出文件。")
         if batch and size + file_size > limit:
             batches.append(batch)
             batch, size = [], 0

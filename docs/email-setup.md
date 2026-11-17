@@ -30,16 +30,7 @@
 
 QQ 邮箱通常不需要额外设置服务器参数，默认值为 `SMTP_HOST=smtp.qq.com`、`SMTP_PORT=465`。其他邮箱请填写其官方 SMTP SSL 地址和端口。
 
-## 4. 发送测试邮件
-
-1. 打开 **Actions → Course files and email**。
-2. 点击 **Run workflow**。
-3. `operation` 选择 `mail-test`，然后运行。
-4. 等待 `Check email only` 步骤完成，并检查收件箱和垃圾邮件夹。
-
-该操作只测试 SMTP，不会登录超星、读取课程或下载视频。步骤变绿表示 SMTP 服务器接受了邮件；仍应检查收件箱确认实际投递。
-
-## 5. 配置超星账号和课程入口
+## 4. 配置超星账号和课程入口
 
 仍在 **New repository secret** 中添加：
 
@@ -55,44 +46,43 @@ QQ 邮箱通常不需要额外设置服务器参数，默认值为 `SMTP_HOST=sm
 
 有些学校使用校园统一认证、验证码或二次验证，云端账号密码登录不一定适用。遇到此类情况，可在本机使用浏览器登录模式；不要把学校登录凭据交给他人代配置。
 
-## 6. 发现课程 ID
+## 5. 先用 `discover` 获取课程名称和 ID
 
-1. 打开 **Actions → Course files and email → Run workflow**。
-2. `operation` 选择 `discover`。
-3. 运行后查看日志中的 `courseinfoid` 和课程名称。
+进入自己的 Fork，打开 **Actions → 课程订阅与邮件 → Run workflow**，运行分支选 `main`，`operation` 选 `discover`。打开「手动运行：discover」并查看 **Summary（运行摘要）**。课程名称和对应的 `courseinfoid` 会并排列出，例如「微积分（示例）｜`10002`」。同样的信息也在「查找课程名称和 ID」步骤的日志中。这一步不会下载视频或发送邮件。
 
-第一次执行时，程序会在当前 Fork 中创建独立的 `data` 分支和空的 `data/subscriptions.json`。课程发现只读取课程列表，不下载视频。
+公开 Fork 的运行摘要和日志可被他人查看。只想在自己电脑上查看课程清单时，使用[本地发现命令](local.md#查找课程名称与-id)。
 
-**公开仓库的 Actions 日志可能对公众可见。** `discover` 日志会显示课程名称和 ID。如果不希望公开课程名称，请在本机运行 `node src/run.mjs --discover`，在本地查看终端输出和 `local-data/catalog.private.json`。
+## 6. 把课程 ID 写入订阅文件
 
-## 7. 设置长期订阅
-
-在自己的仓库切换到 **`data` 分支**，编辑 `data/subscriptions.json`：
+运行摘要里点击 **编辑订阅清单**，或在 **Code → `data` 分支 → `data/subscriptions.json`** 点铅笔图标。首次成功运行 `discover` 会创建该文件。将想订阅的课程对应的 ID 填入 `course_ids`，保留每个数字的英文双引号，多门课用英文逗号分隔。下面是示例，请换成自己查到的数字：
 
 ```json
 {
-  "course_ids": [
-    "40243",
-    "38135"
-  ]
+  "course_ids": ["10001", "10002"]
 }
 ```
 
-数组中的值是课程列表接口返回的 `courseinfoid`，必须使用数字字符串。提交修改后，这些课程成为长期订阅。
+点击 **Commit changes**，提交到 `data` 分支。课程 ID 填在这里，邮箱和登录凭据仍填在 Secrets 中。以后修改订阅时继续编辑这个文件。
 
-无需设置 `COURSE_IDS` Secret。GitHub Actions 会从当前 Fork 的 `data/subscriptions.json` 读取课程 ID。`COURSE_IDS` 仅作为本地/ROG `.env` 的回退配置。
+如果通过本地命令查到了 ID，且没有在 Actions 运行 `discover`，可以在自己 Fork 的 **Code** 页面用分支菜单从 `main` 创建 `data` 分支（已有就直接选它），再通过 **Add file → Create new file** 创建 `data/subscriptions.json`，填上面的 JSON 并提交。如果 Fork 公开，这个文件里的课程 ID 仍是公开的。
+
+## 7. 发送测试邮件
+
+1. 打开 **Actions → 课程订阅与邮件**。
+2. 点击 **Run workflow**，运行分支选择 `main`。
+3. `operation` 选择 `mail-test`，然后运行。
+4. 等待 「发送邮箱测试邮件」 步骤完成，并检查收件箱和垃圾邮件夹。
+
+该操作只测试 SMTP，不会登录超星、读取课程或下载视频。步骤变绿表示 SMTP 服务器接受了邮件；仍应检查收件箱确认实际投递。
 
 ## 8. 运行课程归档
 
-再次运行 **Course files and email**：
+测试邮件到达后，从 `main` 再次运行 **课程订阅与邮件**：
 
 - `operation` 选择 `run`，处理长期订阅课程。
 - 第一次建议 `max_lectures=1`，确认附件正确后再增加。
-- 若只想临时处理其他课程，选择 `single`，在 `course_ids` 输入框填写逗号分隔的 `courseinfoid`。已有订阅文件时，这不会修改长期订阅。
 
 `max_lectures` 限制的是本轮处理的课节/回放数量，不是课程数。系统会跳过已完成的发送渠道，并优先处理日期较新的回放。
-
-也可以设置 `COURSE_REPLAY_URL` Secret 指定单节「观看回放」链接。设置后会优先处理该回放，并绕过课程订阅；恢复批量订阅前请删除该 Secret。
 
 ## 9. 启用定时检查
 
@@ -124,7 +114,7 @@ QQ 邮箱通常不需要额外设置服务器参数，默认值为 `SMTP_HOST=sm
 | 登录要求验证码或二次验证 | 使用本机浏览器登录模式；云端账号密码登录不保证支持学校统一认证 |
 | 课程 ID 不在可访问列表 | 确认 ID 来自当前账号、当前课程列表和正确学期；检查是否已失去课程访问权限 |
 | 没有找到可处理回放 | 该课节可能尚未发布回放，或平台未提供可用的观看回放链接 |
-| 视频下载超时 | 学校视频域名可能只允许校内网络访问；改用具备访问条件的本机/ROG 网络 |
+| 视频下载超时 | 学校视频域名可能只允许校内网络访问；改用能访问该地址的本地网络运行 |
 | 发送记录无法解密 | 使用最初设置的 `STATE_KEY`；不要删除加密状态后直接重跑 |
 
 请遵守学校平台使用规范，仅处理本人获授权访问的课程内容，并妥善管理账号凭据和加密密钥。

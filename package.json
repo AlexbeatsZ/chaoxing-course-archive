@@ -1,6 +1,6 @@
 {
   "name": "chaoxing-course-archive",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "private": true,
   "type": "module",
   "description": "Local Chaoxing replay transcript and slide archive",
@@ -8,11 +8,11 @@
     "node": ">=22"
   },
   "bin": {
-    "course-archive": "src/cli.mjs"
+    "course-archive": "src/run.mjs"
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "start": "node src/cli.mjs"
+    "start": "node src/run.mjs"
   },
   "overrides": {
     "image-size": "2.1.0"

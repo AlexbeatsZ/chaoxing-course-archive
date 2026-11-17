@@ -24,18 +24,44 @@ test('subscription manifest has a single course_ids source of truth', () => {
   assert.throws(() => parseSubscriptionManifest('{'), /有效 JSON/);
 });
 
-test('local persistent selection and one-off selection remain separate', async () => {
+test('local archive uses the saved subscriptions and discovery can list before setup', async () => {
   const env = { COURSE_IDS: '100,200' };
-  const persistent = await resolveCourseSelection({ mode: 'run', env });
-  assert.deepEqual(persistent.courseIds, ['100', '200']);
-  assert.equal(persistent.oneOff, false);
+  assert.deepEqual(await resolveCourseSelection({ env }), ['100', '200']);
+  assert.deepEqual(await resolveCourseSelection({ initialize: true, env: {} }), []);
+});
 
-  const single = await resolveCourseSelection({
-    mode: 'single',
-    inputIds: '300,400',
-    env,
+test('course discovery initializes an empty manifest once and hosted archive only reads it', async t => {
+  const env = { GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'student/archive', GITHUB_TOKEN: 'fixture', COURSE_IDS: '999' };
+  let branch = false, manifest, manifestWrites = 0;
+  t.mock.method(globalThis, 'fetch', async (url, { method = 'GET', body }) => {
+    const { pathname, searchParams } = new URL(url);
+    const reply = (value, status = 200) => Response.json(value, { status });
+    if (pathname === '/repos/student/archive') return reply({ default_branch: 'main' });
+    if (pathname.endsWith('/git/ref/heads/main')) return reply({ object: { sha: 'fixture-base' } });
+    if (pathname.endsWith('/git/ref/heads/data')) return branch ? reply({}) : reply({}, 404);
+    if (pathname.endsWith('/git/refs') && method === 'POST') {
+      assert.equal(JSON.parse(body).ref, 'refs/heads/data');
+      branch = true;
+      return reply({}, 201);
+    }
+    assert.equal(pathname, '/repos/student/archive/contents/data/subscriptions.json');
+    if (method === 'PUT') {
+      const request = JSON.parse(body);
+      assert.equal(request.branch, 'data');
+      assert.deepEqual(parseSubscriptionManifest(Buffer.from(request.content, 'base64').toString()), []);
+      manifest = request.content;
+      manifestWrites++;
+      return reply({}, 201);
+    }
+    assert.equal(searchParams.get('ref'), 'data');
+    return manifest ? reply({ encoding: 'base64', content: manifest }) : reply({}, 404);
   });
-  assert.deepEqual(single.courseIds, ['300', '400']);
-  assert.deepEqual(single.subscriptionIds, ['100', '200']);
-  assert.equal(single.oneOff, true);
+
+  await assert.rejects(resolveCourseSelection({ env }), /先运行 discover/);
+  assert.equal(branch, false);
+  assert.deepEqual(await resolveCourseSelection({ initialize: true, env }), []);
+  manifest = Buffer.from('{"course_ids":["10001"]}').toString('base64');
+  assert.deepEqual(await resolveCourseSelection({ initialize: true, env }), ['10001']);
+  assert.deepEqual(await resolveCourseSelection({ env }), ['10001']);
+  assert.equal(manifestWrites, 1);
 });

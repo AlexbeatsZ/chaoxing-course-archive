@@ -6,17 +6,18 @@
 
 需要 Node.js 22+、Python 3.11+、uv、FFmpeg 和 ffprobe。先安装项目依赖：
 
-```powershell
+```bash
 npm ci
 uv sync --locked
-Copy-Item .env.example .env
 ```
 
-在 `.env` 中填写超星账号、课程列表入口和邮件/QQ 发送配置。不要将 `.env` 提交到 GitHub。
+Windows PowerShell 执行 `Copy-Item .env.example .env`；macOS / Linux 执行 `cp .env.example .env`。
 
-## 登录并发现课程
+在 `.env` 中填写智播课堂课程列表入口。普通账号登录可填写超星账号和密码；使用浏览器登录时，两项留空。按需要填写邮件或 QQ 发送配置。不要将 `.env` 提交到 GitHub。
 
-首次使用浏览器登录时，设置：
+## 查找课程名称与 ID
+
+首次使用浏览器登录时，需要安装 Chrome，清空账号和密码，并设置：
 
 ```dotenv
 COURSE_HEADLESS=false
@@ -28,21 +29,23 @@ COURSE_HEADLESS=false
 node src/run.mjs --discover
 ```
 
-在弹出的独立浏览器中正常登录。程序会输出当前账号可访问的课程 ID 和名称，并在 `local-data/catalog.private.json` 保存本地课程目录。登录成功后，可将 `COURSE_HEADLESS` 改回 `true`，复用 `local-data/browser-profile`。
+使用浏览器模式时，请在弹出的 Chrome 中正常登录。程序会输出当前账号可访问的课程 ID 和名称，并在 `local-data/catalog.private.json` 保存本地课程目录。登录成功后，可将 `COURSE_HEADLESS` 改回 `true`，复用 `local-data/browser-profile`。
 
-将需要处理的课程 ID 填入 `.env`：
+按课程名称选好课程，将对应 ID 填入 `.env`，多门课程用英文逗号分隔。下列数字仅作示例：
 
 ```dotenv
-COURSE_IDS=40243,38135
+COURSE_IDS=10001,10002
 ```
 
-`COURSE_IDS` 是本地/ROG 的回退配置；GitHub Actions 使用当前 Fork 的 `data/subscriptions.json`。两者都填写超星课程列表接口返回的 `courseinfoid`，不要填写课节 `speechid`。
+本地运行从 `COURSE_IDS` 读取订阅；GitHub Actions 使用当前 Fork 的 `data/subscriptions.json`。两者都填写超星课程列表接口返回的 `courseinfoid`，不要填写课节 `speechid`。
 
 ## 运行与输出
 
-```powershell
-powershell -File scripts/run.ps1
+```bash
+node src/run.mjs
 ```
+
+如果配置了邮箱，可先运行 `node src/run.mjs --mail-test`，确认能收到测试邮件。
 
 每节回放的最终文件保存在 `local-data/final/<回放编号>/`，包含一个 PPTX 和一个 DOCX。视频、字幕、浏览器配置和中间数据保存在被 Git 忽略的 `local-data/` 中。
 

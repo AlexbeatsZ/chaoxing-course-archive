@@ -75,8 +75,8 @@ async function ensureDataBranch(api) {
   }
 }
 
-async function writeInitialManifest(api, courseIds) {
-  const content = Buffer.from(serializeSubscriptionManifest(courseIds), 'utf8').toString('base64');
+async function writeInitialManifest(api) {
+  const content = Buffer.from(serializeSubscriptionManifest([]), 'utf8').toString('base64');
   try {
     await api('contents/' + MANIFEST_PATH, {
       method: 'PUT',
@@ -93,44 +93,26 @@ async function writeInitialManifest(api, courseIds) {
     if (!raced) throw error;
     return parseSubscriptionManifest(Buffer.from(raced.content.replace(/\s/g, ''), 'base64').toString('utf8'));
   }
-  return normalizeCourseIds(courseIds);
+  return [];
 }
 
-/**
- * Resolve persistent subscriptions from each user's own data branch.
- * Single-run selection is temporary once a manifest already exists.
- * On the first single run, supplied IDs bootstrap the manifest, matching
- * the established subscription workflow.
- */
-export async function resolveCourseSelection({ mode = 'run', inputIds = '', env = process.env } = {}) {
-  if (!['discover', 'run', 'single'].includes(mode)) throw new Error('未知课程选择模式：' + mode);
-  const explicit = parseCourseIds(inputIds);
-
-  if (env.GITHUB_REPOSITORY && env.GITHUB_TOKEN) {
+// Only discovery bootstraps the manifest. A normal run always reads the saved IDs.
+export async function resolveCourseSelection({ initialize = false, env = process.env } = {}) {
+  if (env.GITHUB_ACTIONS === 'true' || (env.GITHUB_REPOSITORY && env.GITHUB_TOKEN)) {
     const api = apiFor(env.GITHUB_REPOSITORY, env.GITHUB_TOKEN);
-    await ensureDataBranch(api);
+    if (initialize) await ensureDataBranch(api);
     const manifest = await api('contents/' + MANIFEST_PATH + '?ref=' + DATA_BRANCH, { allowMissing: true });
 
     if (!manifest) {
-      const initialIds = mode === 'single' ? explicit : [];
-      const saved = await writeInitialManifest(api, initialIds);
-      return { courseIds: saved, subscriptionIds: saved, initialized: true, oneOff: false, source: 'data branch' };
+      if (!initialize) throw new Error('找不到 data 分支的 data/subscriptions.json。请先运行 discover，再填写 course_ids。');
+      return writeInitialManifest(api);
     }
 
     if (manifest.encoding !== 'base64' || typeof manifest.content !== 'string') {
       throw new Error('data/subscriptions.json 返回了不支持的 GitHub 内容格式。');
     }
-    const saved = parseSubscriptionManifest(Buffer.from(manifest.content.replace(/\s/g, ''), 'base64').toString('utf8'));
-    if (mode === 'single' && explicit.length) {
-      return { courseIds: explicit, subscriptionIds: saved, initialized: false, oneOff: true, source: 'single run' };
-    }
-    return { courseIds: saved, subscriptionIds: saved, initialized: false, oneOff: false, source: 'data branch' };
+    return parseSubscriptionManifest(Buffer.from(manifest.content.replace(/\s/g, ''), 'base64').toString('utf8'));
   }
 
-  // Local/ROG fallback. GitHub Actions always uses data/subscriptions.json.
-  const saved = parseCourseIds(env.COURSE_IDS || '');
-  if (mode === 'single' && explicit.length) {
-    return { courseIds: explicit, subscriptionIds: saved, initialized: false, oneOff: true, source: 'local input' };
-  }
-  return { courseIds: saved, subscriptionIds: saved, initialized: false, oneOff: false, source: 'local COURSE_IDS' };
+  return initialize ? [] : parseCourseIds(env.COURSE_IDS || '');
 }

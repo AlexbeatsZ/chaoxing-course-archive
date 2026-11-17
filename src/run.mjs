@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { readFile, mkdir, open, rm } from 'node:fs/promises';
+import { parseArgs, promisify } from 'node:util';
+import { existsSync, realpathSync } from 'node:fs';
+import { appendFile, readFile, mkdir, open, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discover } from './discover.mjs';
-import { inspectWithLogin } from './auth.mjs';
 import { saveJson } from './platform.mjs';
 import { sendEmail, sendQQ } from './delivery.mjs';
 import { loadRemoteState, saveRemoteState, statePassword } from './state.mjs';
@@ -14,6 +14,7 @@ import { safeMessage } from './logging.mjs';
 
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL('../', import.meta.url));
+const catalogPath = join(root, 'local-data/catalog.private.json');
 try { process.loadEnvFile(join(root, '.env')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
 export function deliveryChannels(value) {
@@ -30,68 +31,71 @@ export function pendingReplays(replays, state, channels) {
     String(b.date || '').localeCompare(String(a.date || '')) || Number(b.speechId) - Number(a.speechId));
 }
 
-function operationFromArgs() {
-  if (process.env.COURSE_OPERATION) return process.env.COURSE_OPERATION;
-  if (process.argv.includes('--discover')) return 'discover';
-  if (process.argv.includes('--single')) return 'single';
-  return 'run';
+function displayName(name) {
+  return String(name || '').replace(/[\r\n\t]+/g, ' ').trim() || '未命名课程';
+}
+
+export function courseDiscoverySummary(courses, repository) {
+  const edit = `https://github.com/${repository}/edit/data/data/subscriptions.json`;
+  const rows = courses.map(course => {
+    const name = displayName(course.name).replace(/[&<>|`*_~\[\]\\]/g, c => `&#${c.charCodeAt(0)};`);
+    return `| ${name} | \`${course.id}\` |`;
+  });
+  return ['## 课程名称与订阅 ID', '', '| 课程名称 | 课程 ID（courseinfoid） |', '| --- | --- |', ...rows, '',
+    `1. 复制目标课程右侧的数字，打开[编辑订阅清单](${edit})。`,
+    '2. 将数字加上英文双引号，填入 `course_ids` 数组。多门课程用英文逗号分隔，提交到 `data` 分支。',
+    '3. 邮箱配置完成后先运行 `mail-test` 确认收件，再运行 `run` 处理已订阅课程。', '', ''].join('\n');
 }
 
 async function listCourses() {
   if (!process.env.COURSE_ENTRY_URL) throw new Error('课程发现需要设置 COURSE_ENTRY_URL。');
-  await resolveCourseSelection({ mode: 'discover' });
   const catalog = await discover(process.env.COURSE_ENTRY_URL, {
     includeReplays: false,
     headless: process.env.COURSE_HEADLESS !== 'false',
     profile: join(root, 'local-data/browser-profile'),
     onProgress: console.log,
   });
-  await saveJson(join(root, 'local-data/catalog.private.json'), catalog);
+  await resolveCourseSelection({ initialize: true });
+  await saveJson(catalogPath, catalog);
   console.log('当前账号可访问的智播课堂课程：');
-  console.log('courseinfoid\t课程名称');
   for (const course of catalog.courses) {
-    console.log(String(course.id) + '\t' + String(course.name || '未命名课程'));
+    console.log(`- ${displayName(course.name)}：courseinfoid=${course.id}`);
   }
-  console.log('将需要归档的 courseinfoid 写入 data/subscriptions.json 的 course_ids 数组。');
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log('在 data 分支的 data/subscriptions.json 中填写 course_ids；也可从本次运行的 Summary 直接进入编辑页。');
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      await appendFile(process.env.GITHUB_STEP_SUMMARY, courseDiscoverySummary(catalog.courses, process.env.GITHUB_REPOSITORY));
+    }
+  } else {
+    console.log('将上面的课程 ID 填入 .env 的 COURSE_IDS，多门用英文逗号分隔。');
+  }
 }
 
 async function run() {
-  if (process.argv.includes('--mail-test')) {
+  const { values } = parseArgs({ options: { help: { type: 'boolean' }, discover: { type: 'boolean' }, 'mail-test': { type: 'boolean' } } });
+  if (values.help) {
+    console.log('课程订阅归档\n  node src/run.mjs --discover   列出课程名称和 courseinfoid\n  node src/run.mjs --mail-test  测试邮箱\n  node src/run.mjs              处理已订阅课程');
+    return;
+  }
+  const operation = values['mail-test'] ? 'mail-test' : values.discover ? 'discover' : (process.env.COURSE_OPERATION || 'run');
+  if (operation === 'mail-test') {
     await sendEmail([], { test: true });
     console.log('测试邮件已交给 SMTP 服务器。');
     return;
   }
 
-  const operation = operationFromArgs();
-  if (!['discover', 'run', 'single'].includes(operation)) {
-    throw new Error('COURSE_OPERATION 只能是 discover、run 或 single。');
-  }
   if (operation === 'discover') {
     await listCourses();
     return;
   }
+  if (operation !== 'run') throw new Error('COURSE_OPERATION 只能是 discover、mail-test 或 run。');
 
-  const selection = await resolveCourseSelection({
-    mode: operation,
-    inputIds: process.env.SINGLE_RUN_COURSE_IDS || '',
-  });
-  if (selection.initialized && !process.env.COURSE_REPLAY_URL) {
-    console.log('已在当前 Fork 创建 data 分支和 data/subscriptions.json。');
-    if (selection.courseIds.length) {
-      console.log('首次 Single Run 的课程 ID 已保存；请再次运行以开始处理。');
-    } else {
-      console.log('请先执行 discover 查看课程 ID，再编辑 data/subscriptions.json。');
-    }
-    return;
-  }
-  if (!process.env.COURSE_REPLAY_URL && !selection.courseIds.length) {
-    console.log('data/subscriptions.json 中尚无订阅课程。请先执行 discover 并添加 courseinfoid。');
-    return;
-  }
-
-  // Keep the familiar iCourse runtime variable as an ephemeral input. The
-  // persistent source of truth remains data/subscriptions.json.
-  process.env.COURSE_IDS = selection.courseIds.join(',');
+  const hosted = process.env.GITHUB_ACTIONS === 'true';
+  const courseIds = await resolveCourseSelection();
+  if (!courseIds.length) throw new Error(hosted
+    ? '尚无订阅课程。请先执行 discover，再编辑 data 分支的 data/subscriptions.json。'
+    : '尚无订阅课程。请先运行 node src/run.mjs --discover，再在 .env 填写 COURSE_IDS。');
+  if (!process.env.COURSE_ENTRY_URL) throw new Error('请设置 COURSE_ENTRY_URL 为智播课堂课程列表的完整链接。');
 
   const channels = deliveryChannels(process.env.DELIVERY);
   if (process.env.GITHUB_ACTIONS === 'true' && !channels.length) {
@@ -110,6 +114,7 @@ async function run() {
     throw new Error('MAX_LECTURES 需为 1 到 100 的整数。');
   }
   const work = resolve(root, process.env.COURSE_WORK || 'local-data/jobs');
+  const runCatalogPath = join(work, 'subscriptions-run.private.json');
   const output = resolve(root, process.env.COURSE_OUTPUT || 'local-data/final');
   const ledger = join(root, 'local-data/state/delivery.json');
   const lock = join(root, 'local-data/run.lock');
@@ -135,34 +140,16 @@ async function run() {
       if (error.code !== 'ENOENT') throw new Error('发送状态文件损坏，已停止以避免重复发送。');
     }
 
-    let manifest;
-    if (process.env.COURSE_REPLAY_URL) {
-      const info = await inspectWithLogin(process.env.COURSE_REPLAY_URL);
-      manifest = {
-        replays: [{
-          url: process.env.COURSE_REPLAY_URL,
-          speechId: info.metadata.speechId,
-          date: info.metadata.date,
-        }],
-      };
-    } else {
-      if (!process.env.COURSE_ENTRY_URL) {
-        throw new Error('请设置 COURSE_ENTRY_URL，或通过 COURSE_REPLAY_URL 指定单节回放。');
-      }
-      manifest = await discover(process.env.COURSE_ENTRY_URL, {
-        courseIds: selection.courseIds,
-        headless: process.env.COURSE_HEADLESS !== 'false',
-        profile: join(root, 'local-data/browser-profile'),
-        onProgress: console.log,
-      });
-    }
+    const manifest = await discover(process.env.COURSE_ENTRY_URL, {
+      courseIds,
+      headless: process.env.COURSE_HEADLESS !== 'false',
+      profile: join(root, 'local-data/browser-profile'),
+      onProgress: console.log,
+    });
 
-    await saveJson(join(root, 'local-data/catalog.private.json'), manifest);
+    await saveJson(runCatalogPath, manifest);
     const pending = pendingReplays(manifest.replays, state, channels).slice(0, max);
     console.log('发现 ' + manifest.replays.length + ' 节已发布回放，本轮处理 ' + pending.length + ' 节。');
-    if (selection.oneOff) {
-      console.log('本轮使用临时课程 ID；data/subscriptions.json 中的长期订阅未修改。');
-    }
 
     let failures = 0;
     for (const [index, replay] of pending.entries()) {
@@ -173,7 +160,7 @@ async function run() {
         const dir = join(work, id);
         const out = join(output, id);
         const child = exec(process.execPath,
-          [join(root, 'src/cli.mjs'), 'capture', replay.url, '--work', dir, '--out', out],
+          [join(root, 'src/archive-lecture.mjs'), runCatalogPath, id, dir, out],
           { cwd: root, maxBuffer: 8e6, timeout: 5 * 60 * 60 * 1000, env: process.env });
         child.child.stderr.on('data', chunk => process.stderr.write(chunk));
         const { stdout } = await child;
@@ -210,7 +197,7 @@ async function run() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && existsSync(process.argv[1]) && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   run().catch(error => {
     console.error(safeMessage(error.stderr?.trim().split('\n').at(-1) || error.message));
     process.exitCode = 1;

@@ -1,18 +1,15 @@
-name: Course files and email
+name: 课程订阅与邮件
+run-name: "${{ github.event_name == 'schedule' && '定时归档订阅课程' || format('手动运行：{0}', inputs.operation) }}"
 on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Choose email test, discover course IDs, run subscriptions, or run selected IDs once
+        description: '首次选 discover 查看课程名称与 ID；填好订阅后，用 mail-test 测邮箱，再选 run 归档'
         type: choice
-        options: [mail-test, discover, run, single]
-        default: mail-test
-      course_ids:
-        description: Comma-separated courseinfoid values; used only by single
-        type: string
-        default: ''
+        options: [discover, mail-test, run]
+        default: discover
       max_lectures:
-        description: Maximum lectures for this run
+        description: '每次最多处理多少节回放（仅 run 生效，不改变订阅课程）'
         type: string
         default: '1'
   schedule:
@@ -33,8 +30,6 @@ jobs:
       COURSE_PASSWORD: ${{ secrets.COURSE_PASSWORD }}
       COURSE_FID: ${{ secrets.COURSE_FID }}
       COURSE_ENTRY_URL: ${{ secrets.COURSE_ENTRY_URL }}
-      COURSE_REPLAY_URL: ${{ secrets.COURSE_REPLAY_URL }}
-      SINGLE_RUN_COURSE_IDS: ${{ inputs.course_ids }}
       SMTP_HOST: ${{ secrets.SMTP_HOST }}
       SMTP_PORT: ${{ secrets.SMTP_PORT }}
       SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
@@ -48,6 +43,7 @@ jobs:
       MAX_LECTURES: ${{ inputs.max_lectures || vars.MAX_LECTURES || '3' }}
       STATE_KEY: ${{ secrets.STATE_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
+    name: 查找课程 · 测试邮箱 · 归档订阅
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.1.0
@@ -60,28 +56,31 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.3
       - run: npm ci
       - run: uv sync --locked
+      - name: 查找课程名称和 ID（查看运行摘要）
+        if: env.COURSE_OPERATION == 'discover'
+        run: node src/run.mjs --discover
       - name: Restore delivery receipts
-        if: env.COURSE_OPERATION == 'run' || env.COURSE_OPERATION == 'single'
+        if: env.COURSE_OPERATION == 'run'
         uses: actions/cache/restore@v6.1.0
         with:
           path: local-data/state/delivery-state.enc
           key: course-receipts-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: course-receipts-
-      - name: Check email only
+      - name: 发送邮箱测试邮件
         if: env.COURSE_OPERATION == 'mail-test'
         run: node src/run.mjs --mail-test
       - name: Install FFmpeg in the temporary runner
-        if: env.COURSE_OPERATION == 'run' || env.COURSE_OPERATION == 'single'
+        if: env.COURSE_OPERATION == 'run'
         run: |
           if ! command -v ffmpeg >/dev/null; then
             sudo apt-get update
             sudo apt-get install -y ffmpeg
           fi
-      - name: Discover courses, process selected replays, and send files
-        if: env.COURSE_OPERATION != 'mail-test'
+      - name: 归档已订阅课程并发送邮件
+        if: env.COURSE_OPERATION == 'run'
         run: node src/run.mjs
       - name: Preserve successful delivery receipts
-        if: always() && (env.COURSE_OPERATION == 'run' || env.COURSE_OPERATION == 'single') && hashFiles('local-data/state/delivery-state.enc') != ''
+        if: always() && env.COURSE_OPERATION == 'run' && hashFiles('local-data/state/delivery-state.enc') != ''
         uses: actions/cache/save@v6.1.0
         with:
           path: local-data/state/delivery-state.enc

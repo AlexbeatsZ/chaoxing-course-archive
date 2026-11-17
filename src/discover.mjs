@@ -33,7 +33,7 @@ export function selectCourses(courses, courseIds = []) {
 }
 
 export async function discover(value, {
-  query = '', courseIds = [], includeReplays = true,
+  courseIds = [], includeReplays = true,
   profile, headless = false, onProgress = () => {},
 } = {}) {
   const entry = new URL(value);
@@ -41,11 +41,14 @@ export async function discover(value, {
     throw new Error('课程发现需要原始智播课堂课程列表链接。');
   }
   const secretsLogin = Boolean(process.env.COURSE_ACCOUNT && process.env.COURSE_PASSWORD);
+  if (!secretsLogin && (process.env.GITHUB_ACTIONS === 'true' || process.env.COURSE_ACCOUNT || process.env.COURSE_PASSWORD)) {
+    throw new Error('请同时配置 COURSE_ACCOUNT 和 COURSE_PASSWORD。使用本地浏览器登录时，两项都留空。');
+  }
   let context, apiOnly;
   if (secretsLogin) {
     const client = await request.newContext({ userAgent: 'Mozilla/5.0', timeout: 60000 });
     context = { request: client, close: () => client.dispose() }; apiOnly = true;
-    onProgress('通过 Secrets 登录超星（不记录凭据）');
+    onProgress('通过账号密码登录超星');
     await loginWithSecrets(context, { account: process.env.COURSE_ACCOUNT, password: process.env.COURSE_PASSWORD,
       fid: process.env.COURSE_FID || '-1' }).catch(async e => { await context.close(); throw e; });
   } else context = await chromium.launchPersistentContext(resolve(profile), { channel: 'chrome', headless,
@@ -83,10 +86,10 @@ export async function discover(value, {
       const records = result.data?.arry || result.data?.list || result.arry || result.list || result.modellist || result.data?.modellist;
       if (!Array.isArray(records)) throw new Error('课程列表接口格式变化，已停止而未猜测课程权限。');
       for (const r of records) {
-        const id = r.courseinfoid;
+        const id = String(r.courseinfoid ?? '');
         const name = r.kcmc || r.coursename || r.name || '';
-        if (id && r.courseinfoenc && !seen.has(String(id)) && (!query || name.includes(query))) {
-          seen.add(String(id)); courses.push({ id, name, enc: r.courseinfoenc });
+        if (/^[1-9]\d*$/.test(id) && r.courseinfoenc && !seen.has(id)) {
+          seen.add(id); courses.push({ id, name, enc: r.courseinfoenc });
         }
       }
       const paging = result.data?.pageInfo || result.pageInfo || {};

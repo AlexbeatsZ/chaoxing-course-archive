@@ -36,7 +36,7 @@ export async function loginWithSecrets(context, { account, password, fid = '-1' 
   if (!response.ok()) throw new Error(`超星登录请求失败 HTTP ${response.status()}`);
   let result;
   try { result = await response.json(); } catch { throw new Error('超星登录未返回有效响应。'); }
-  if (result.containTwoFactorLogin || result.needVcode || result.needCaptcha) throw new Error('超星要求验证码或二次验证，云端无法无人值守登录。请在 ROG 本地完成一次浏览器登录。');
+  if (result.containTwoFactorLogin || result.needVcode || result.needCaptcha) throw new Error('超星要求验证码或二次验证，请改用本地浏览器登录。');
   if (!result.status) throw new Error('超星登录失败：请检查手机号、密码和机构编号，或在浏览器中确认是否需要验证码。');
   if (result.url) {
     let url = result.url;

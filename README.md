@@ -10,7 +10,7 @@
 ## 功能与适用范围
 
 - 自动发现当前账号在智播课堂课程列表中可访问的课程。
-- 按课程 ID 选择长期订阅课程，也支持临时指定课程。
+- 按课程 ID 订阅整门课程，自动发现并处理其中的回放。
 - 只处理符合平台发布条件、存在可用回放链接的课节。
 - 自动提取电脑录屏中的课件页面，保留回翻页的时间顺序。
 - 每节回放生成 PPTX 和 DOCX；支持邮件或本机 OneBot/NapCat 发送。
@@ -48,68 +48,43 @@
 
 部分学校使用校园统一认证、验证码或二次验证。云端账号密码登录不能保证兼容所有学校；遇到此类限制时，请使用本机浏览器登录方式，或确认学校允许的登录流程。
 
-### 3. 测试邮件
+### 3. 先运行 `discover` 查课程名称与 ID
 
-进入 **Actions → Course files and email → Run workflow**：
+1. 在自己的 Fork 打开 **Actions → 课程订阅与邮件 → Run workflow**。运行分支选 **`main`**，`operation` 保持默认的 **`discover`**。
+2. 点击 **Run workflow**，打开新生成的「手动运行：discover」。完成后，在左侧点 **Summary（运行摘要）**，找到「课程名称与订阅 ID」表格。也可在「查找课程名称和 ID」步骤的日志里查看。
+3. 按课程名找到目标课，复制同一行的 **`courseinfoid`**。例如，下面的数字仅作格式演示：
 
-- `operation` 选择 `mail-test`。
-- 点击 **Run workflow**。
-- 等待 `Check email only` 步骤完成，并确认实际收到测试邮件。
+   | 课程名称 | 课程 ID（`courseinfoid`） |
+   | --- | --- |
+   | 中国古代文学（示例） | `10001` |
+   | 微积分（示例） | `10002` |
 
-邮件测试不登录超星，也不下载课程资料。
+`discover` 只需要超星登录和课程入口配置。它不会发送邮件或下载视频，首次成功发现课程后会在当前 Fork 创建 `data` 分支和空订阅清单。
 
-### 4. 发现本人可访问的课程
+如果 Fork 是公开仓库，运行摘要和日志中的课程名称与 ID 也是公开的。想在本机查看，可用[本地课程发现](docs/local.md#查找课程名称与-id)；本地查看后仍想用 Actions 归档，可[手动创建订阅文件](docs/email-setup.md#6-把课程-id-写入订阅文件)。
 
-再次进入 **Actions → Course files and email → Run workflow**：
+### 4. 把 ID 填进订阅清单
 
-- `operation` 选择 `discover`。
-- 运行后查看日志中的课程 ID 和课程名称。
+1. 点击运行摘要里的 **编辑订阅清单**。也可以手动进入自己 Fork 的 **Code → 分支菜单 → `data` → `data/subscriptions.json` → 铅笔图标**。
+2. 把从课程表复制的数字用英文双引号包起来，放进 `course_ids`；多门课程用英文逗号分隔。例如：
 
-课程 ID 来自超星课程列表接口的 `courseinfoid`。第一次执行时，程序会在当前 Fork 中自动创建独立的 `data` 分支和空订阅文件；课程发现本身不会下载视频或生成文档。
-
-**隐私提示：** 如果 Fork 是公开仓库，GitHub Actions 日志也可能对公众可见。课程发现日志会显示课程名称和 ID；如果不希望公开这些信息，请使用本机 CLI 发现课程，而不要在公开 Actions 日志中输出课程目录。
-
-### 5. 设置长期订阅课程
-
-在自己的仓库切换到 **`data` 分支**，打开 `data/subscriptions.json` 并编辑 `course_ids` 数组。例如：
-
-```json
-{
-  "course_ids": [
-    "40243",
-    "38135",
-    "37695"
-  ]
-}
-```
-
-将需要归档的 `courseinfoid` 填入数组。课程 ID 使用字符串形式，必须是数字；重复 ID 会被去重。提交修改后，这些课程就成为该 Fork 的长期订阅。
-
-**不需要创建 `COURSE_IDS` Secret。** GitHub Actions 会从当前 Fork 自己的 `data/subscriptions.json` 读取长期订阅列表。
-
-### 6. 运行归档
-
-回到 **Actions → Course files and email → Run workflow**：
-
-- `operation` 选择 `run`，按 `max_lectures` 设置本轮最多处理的课节数。
-- 第一次建议保持默认值 `1`，确认邮件附件正确后再增加。
-
-每轮先发现订阅课程中的已发布回放，再排除已完成的发送记录，按回放日期从新到旧处理。`max_lectures` 的单位是**课节/回放**，不是课程数。
-
-如果只想临时处理其他课程，选择 `single` 并在 `course_ids` 中填写逗号分隔的课程 ID。已有 `data/subscriptions.json` 时，这次选择不会修改长期订阅。首次运行若尚无订阅文件，`single` 输入会用于初始化订阅；初始化后需要再次运行才开始处理。
-
-如果只想处理某一节回放，而不是整门课程，可以设置 `COURSE_REPLAY_URL` Secret。获取方法：
-
-1. 登录超星智播课堂，进入目标课程中**具体课节的「观看回放」页面**，不要停留在课程列表或课程主页。
-2. 复制浏览器地址栏中的**完整回放链接**。链接通常类似：
-
-   ```text
-   https://psp-zelda.chaoxing.com/vri-zelda/index?speechid=12345678&enc=...&pid=...
+   ```json
+   {
+     "course_ids": ["10001", "10002"]
+   }
    ```
 
-3. 其中 `speechid=` 后面、下一个 `&` 前面的值，就是这一节回放的 ID。将**完整链接**填入当前 Fork 的 `COURSE_REPLAY_URL` Secret，而不是只填写 `speechid` 后面的数字。
+3. 点击 **Commit changes**，提交到 **`data`** 分支。以后增删订阅，编辑同一个文件即可。`course_ids` 不填课程名称，也不填观看回放链接里的 `speechid`。
 
-设置后程序会优先处理该节回放，并绕过课程列表和课程订阅；处理完成后删除该 Secret，再恢复批量订阅。
+GitHub Actions 从这个文件读取订阅，**不用设置 `COURSE_IDS` Secret**，也不用在每次运行时重新填 ID。
+
+### 5. 用 `mail-test` 确认能收信
+
+按[邮箱配置说明](docs/email-setup.md)填好邮箱 Secrets。回到同一个 **课程订阅与邮件** 工作流，选择 `mail-test`，运行后确认收件箱里有测试邮件。这一步只验证邮箱。
+
+### 6. 用 `run` 归档订阅课程
+
+再次运行 **课程订阅与邮件**，选择 `run`。`max_lectures` 可以先保留 `1`，用来限制这次处理量。后续手动运行和定时运行都读取同一份订阅清单：程序会检查订阅课程里已发布的回放，跳过已处理的记录，优先处理较新的回放。
 
 ### 7. 启用每日自动检查
 
@@ -119,35 +94,6 @@
 - Value：`true`
 
 默认定时点为每天 **UTC 12:23（北京时间 20:23）**。可选设置 `MAX_LECTURES`，控制每轮最多处理多少节；默认 3。GitHub 定时任务可能延迟，启用后请观察一次实际运行。
-
-## 课程 ID 与回放 ID
-
-项目区分两个层级，不能混用：
-
-| 标识 | 超星字段 | 用途 |
-| --- | --- | --- |
-| 课程 ID | `courseinfoid` | 选择要长期订阅的整门课程，保存在 `data/subscriptions.json` |
-| 回放 ID | `speechid` | 标识某一节具体回放，用于定位、处理和记录单节回放 |
-
-### 如何查看一节课的 speechid
-
-1. 登录超星智播课堂，进入目标课程中某一节课的**「观看回放」页面**。
-2. 查看浏览器地址栏。回放链接通常包含 `speechid` 参数，例如：
-
-   ```text
-   https://psp-zelda.chaoxing.com/vri-zelda/index?speechid=12345678&enc=...&pid=...
-   ```
-
-3. `speechid=` 后面、下一个 `&` 前面的值，就是当前这节回放的 ID。
-
-注意：这里必须进入**具体课节的回放页面**，不是课程列表页。这个 `speechid` 只代表一节回放，不代表整门课程。
-
-### 应该使用哪一个 ID
-
-- **长期订阅整门课程：** 在 Actions 中运行 `discover`，从日志里找到该课程对应的 `courseinfoid`，再填入 `data/subscriptions.json`。不要使用 `speechid`。
-- **临时处理某一节回放：** 使用上面的回放页面链接。当前程序需要的是**完整回放 URL**，因为页面还包含其他请求参数；不能只提供 `speechid` 数字。可按上一节说明将完整链接设置为 `COURSE_REPLAY_URL`。
-
-Actions 的 `single` 输入框仍然用于临时选择课程，因此其中填写的是 `courseinfoid`，不是 `speechid`。
 
 ## 分支与数据安全
 
@@ -159,7 +105,7 @@ Actions 的 `single` 输入框仍然用于临时选择课程，因此其中填�
 | `data/subscriptions.json`（`data` 分支） | 用户选择的课程 ID，明文 JSON |
 | `data/delivery-state.enc`（`data` 分支） | 已处理/已发送记录，加密保存 |
 
-`data` 分支会在第一次执行 `discover`、`run` 或 `single` 时由当前 Fork 自动创建。不要把其他用户的 `data` 分支复制到自己的仓库。
+`data` 分支和空订阅清单由当前 Fork 首次成功执行 `discover` 时自动初始化。已有清单会保留。
 
 如果仓库是公开的，`data/subscriptions.json` 中的课程 ID 也是公开的。不要在其中填写账号、密码、邮箱授权码或其他秘密。超星凭据和邮箱授权码必须保存在 GitHub Secrets 中。建议设置独立 `STATE_KEY` 并长期保留；如果未设置，发送记录密钥会从超星账号和密码派生，修改密码后可能无法解密旧记录。
 
@@ -169,42 +115,7 @@ Actions 的 `single` 输入框仍然用于临时选择课程，因此其中填�
 
 ## 本地运行
 
-需要 Node.js 22+、Python 3.11+、FFmpeg/ffprobe。安装依赖：
-
-```bash
-npm ci
-uv sync --locked
-```
-
-复制 `.env.example` 为 `.env`，填写超星账号、密码和课程入口。`.env` 不要提交到 Git。
-
-本地查看课程 ID：
-
-```bash
-node src/run.mjs --discover
-```
-
-该命令只列出课程 ID，不会扫描每门课程的回放。如果首次需要交互式登录，将 `COURSE_HEADLESS=false`，在弹出的浏览器中正常登录；之后可恢复 `true` 复用项目独立浏览器配置。浏览器配置保存在 `local-data/`，不要分享或提交。
-
-本地运行且未配置 GitHub 订阅分支时，可以在 `.env` 中使用 `COURSE_IDS=课程ID1,课程ID2` 作为本地回退配置。GitHub Actions 不读取这个变量，而以 `data/subscriptions.json` 为准。
-
-正式运行：
-
-```bash
-node src/run.mjs
-```
-
-输出文件位于 `local-data/final/<回放编号>/`。`DELIVERY=none` 只生成本地文件；`email` 发送邮件；`qq` 通过本机 OneBot/NapCat 发送；`both` 使用两种渠道。Windows 可使用 `scripts/run.ps1`，macOS/Linux 可使用 `scripts/run.sh`。
-
-## 单节回放命令
-
-```bash
-node src/cli.mjs inspect "观看回放链接"
-node src/cli.mjs capture "观看回放链接" --out local-data/final/example
-node src/cli.mjs build local-data/jobs/回放编号 --out local-data/final/回放编号
-```
-
-`inspect` 只检查课程信息、视频流和字幕，不下载视频。`capture` 完整处理一节课；`build` 从已有本地中间数据重新生成文档。
+Windows、macOS 和 Linux 均可使用[本地运行说明](docs/local.md)。配置 `.env` 后，运行 `node src/run.mjs --discover` 查看课程名称与 ID，把要订阅的 ID 填入 `.env` 的 `COURSE_IDS`，再运行 `node src/run.mjs`。本地可以只生成文件，也可以通过 SMTP 或 OneBot/NapCat 发送。遇到校园统一认证或验证码时，可用本地浏览器登录。
 
 ## 验证与开发
 
