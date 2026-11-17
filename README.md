@@ -98,7 +98,18 @@
 
 如果只想临时处理其他课程，选择 `single` 并在 `course_ids` 中填写逗号分隔的课程 ID。已有 `data/subscriptions.json` 时，这次选择不会修改长期订阅。首次运行若尚无订阅文件，`single` 输入会用于初始化订阅；初始化后需要再次运行才开始处理。
 
-也可以设置 `COURSE_REPLAY_URL` Secret，直接指定一节「观看回放」链接。设置后会优先处理这一节，并绕过课程列表和课程订阅；恢复批量订阅前请删除该 Secret。
+如果只想处理某一节回放，而不是整门课程，可以设置 `COURSE_REPLAY_URL` Secret。获取方法：
+
+1. 登录超星智播课堂，进入目标课程中**具体课节的「观看回放」页面**，不要停留在课程列表或课程主页。
+2. 复制浏览器地址栏中的**完整回放链接**。链接通常类似：
+
+   ```text
+   https://psp-zelda.chaoxing.com/vri-zelda/index?speechid=12345678&enc=...&pid=...
+   ```
+
+3. 其中 `speechid=` 后面、下一个 `&` 前面的值，就是这一节回放的 ID。将**完整链接**填入当前 Fork 的 `COURSE_REPLAY_URL` Secret，而不是只填写 `speechid` 后面的数字。
+
+设置后程序会优先处理该节回放，并绕过课程列表和课程订阅；处理完成后删除该 Secret，再恢复批量订阅。
 
 ### 7. 启用每日自动检查
 
@@ -111,14 +122,32 @@
 
 ## 课程 ID 与回放 ID
 
-项目区分两个层级：
+项目区分两个层级，不能混用：
 
 | 标识 | 超星字段 | 用途 |
 | --- | --- | --- |
-| 课程 ID | `courseinfoid` | 选择要订阅的课程，保存在 `data/subscriptions.json` |
-| 回放 ID | `speechid` | 唯一标识一节回放，用于增量处理记录和本地输出目录 |
+| 课程 ID | `courseinfoid` | 选择要长期订阅的整门课程，保存在 `data/subscriptions.json` |
+| 回放 ID | `speechid` | 标识某一节具体回放，用于定位、处理和记录单节回放 |
 
-不要把 `speechid` 填入 `course_ids`。不同平台的课程 ID 也不通用；本项目使用超星智播课堂接口返回的 `courseinfoid`。
+### 如何查看一节课的 speechid
+
+1. 登录超星智播课堂，进入目标课程中某一节课的**「观看回放」页面**。
+2. 查看浏览器地址栏。回放链接通常包含 `speechid` 参数，例如：
+
+   ```text
+   https://psp-zelda.chaoxing.com/vri-zelda/index?speechid=12345678&enc=...&pid=...
+   ```
+
+3. `speechid=` 后面、下一个 `&` 前面的值，就是当前这节回放的 ID。
+
+注意：这里必须进入**具体课节的回放页面**，不是课程列表页。这个 `speechid` 只代表一节回放，不代表整门课程。
+
+### 应该使用哪一个 ID
+
+- **长期订阅整门课程：** 在 Actions 中运行 `discover`，从日志里找到该课程对应的 `courseinfoid`，再填入 `data/subscriptions.json`。不要使用 `speechid`。
+- **临时处理某一节回放：** 使用上面的回放页面链接。当前程序需要的是**完整回放 URL**，因为页面还包含其他请求参数；不能只提供 `speechid` 数字。可按上一节说明将完整链接设置为 `COURSE_REPLAY_URL`。
+
+Actions 的 `single` 输入框仍然用于临时选择课程，因此其中填写的是 `courseinfoid`，不是 `speechid`。
 
 ## 分支与数据安全
 
@@ -138,7 +167,7 @@
 
 课程视频、字幕、生成文档和浏览器登录目录不会提交到公开仓库，也不会上传为公开 Actions Artifact。它们只保存在被 Git 忽略的 `local-data/` 中，或通过配置的私有发送渠道交付。
 
-## 本地或 ROG 运行
+## 本地运行
 
 需要 Node.js 22+、Python 3.11+、FFmpeg/ffprobe。安装依赖：
 
@@ -157,7 +186,7 @@ node src/run.mjs --discover
 
 该命令只列出课程 ID，不会扫描每门课程的回放。如果首次需要交互式登录，将 `COURSE_HEADLESS=false`，在弹出的浏览器中正常登录；之后可恢复 `true` 复用项目独立浏览器配置。浏览器配置保存在 `local-data/`，不要分享或提交。
 
-本地/ROG 没有 GitHub 订阅分支时，可以在 `.env` 中使用 `COURSE_IDS=课程ID1,课程ID2` 作为本地回退配置。GitHub Actions 不读取这个变量，而以 `data/subscriptions.json` 为准。
+本地运行且未配置 GitHub 订阅分支时，可以在 `.env` 中使用 `COURSE_IDS=课程ID1,课程ID2` 作为本地回退配置。GitHub Actions 不读取这个变量，而以 `data/subscriptions.json` 为准。
 
 正式运行：
 
