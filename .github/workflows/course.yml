@@ -3,10 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: First use mail-test, then run
+        description: Choose email test, discover course IDs, run subscriptions, or run selected IDs once
         type: choice
-        options: [mail-test, run]
+        options: [mail-test, discover, run, single]
         default: mail-test
+      course_ids:
+        description: Comma-separated courseinfoid values; used only by single
+        type: string
+        default: ''
       max_lectures:
         description: Maximum lectures for this run
         type: string
@@ -24,12 +28,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 330
     env:
+      COURSE_OPERATION: ${{ github.event_name == 'schedule' && 'run' || inputs.operation || 'run' }}
       COURSE_ACCOUNT: ${{ secrets.COURSE_ACCOUNT }}
       COURSE_PASSWORD: ${{ secrets.COURSE_PASSWORD }}
       COURSE_FID: ${{ secrets.COURSE_FID }}
       COURSE_ENTRY_URL: ${{ secrets.COURSE_ENTRY_URL }}
       COURSE_REPLAY_URL: ${{ secrets.COURSE_REPLAY_URL }}
-      COURSE_QUERY: ${{ secrets.COURSE_QUERY }}
+      SINGLE_RUN_COURSE_IDS: ${{ inputs.course_ids }}
       SMTP_HOST: ${{ secrets.SMTP_HOST }}
       SMTP_PORT: ${{ secrets.SMTP_PORT }}
       SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
@@ -56,27 +61,27 @@ jobs:
       - run: npm ci
       - run: uv sync --locked
       - name: Restore delivery receipts
-        if: inputs.operation != 'mail-test'
+        if: env.COURSE_OPERATION == 'run' || env.COURSE_OPERATION == 'single'
         uses: actions/cache/restore@v6.1.0
         with:
           path: local-data/state/delivery-state.enc
           key: course-receipts-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: course-receipts-
       - name: Check email only
-        if: inputs.operation == 'mail-test'
+        if: env.COURSE_OPERATION == 'mail-test'
         run: node src/run.mjs --mail-test
       - name: Install FFmpeg in the temporary runner
-        if: inputs.operation != 'mail-test'
+        if: env.COURSE_OPERATION == 'run' || env.COURSE_OPERATION == 'single'
         run: |
           if ! command -v ffmpeg >/dev/null; then
             sudo apt-get update
             sudo apt-get install -y ffmpeg
           fi
-      - name: Fetch, process and send
-        if: inputs.operation != 'mail-test'
+      - name: Discover courses, process selected replays, and send files
+        if: env.COURSE_OPERATION != 'mail-test'
         run: node src/run.mjs
       - name: Preserve successful delivery receipts
-        if: always() && inputs.operation != 'mail-test' && hashFiles('local-data/state/delivery-state.enc') != ''
+        if: always() && (env.COURSE_OPERATION == 'run' || env.COURSE_OPERATION == 'single') && hashFiles('local-data/state/delivery-state.enc') != ''
         uses: actions/cache/save@v6.1.0
         with:
           path: local-data/state/delivery-state.enc

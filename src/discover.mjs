@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { request } from 'playwright-core';
 import { load } from 'cheerio';
 import { loginWithSecrets } from './auth.mjs';
+import { normalizeCourseIds } from './subscriptions.mjs';
 
 export function publishedReplays(records, course) {
   return records.filter(r => Number(r.status) === 3 && Number(r.respublish) === 1 && Number(r.isopen) !== 1 && r.pcplayerurl)
@@ -19,7 +20,22 @@ export function courseRecordParameters(args, course, state, page = 1) {
   return params;
 }
 
-export async function discover(value, { query = '', profile, headless = false, onProgress = () => {} } = {}) {
+export function selectCourses(courses, courseIds = []) {
+  const ids = normalizeCourseIds(courseIds);
+  if (!ids.length) return courses;
+  const byId = new Map(courses.map(course => [String(course.id), course]));
+  const missing = ids.filter(id => !byId.has(id));
+  if (missing.length) {
+    throw new Error('以下课程 ID 不在当前账号可访问的课程列表中：' + missing.join(', ') +
+      '。请重新执行 discover 检查课程列表和学期。');
+  }
+  return ids.map(id => byId.get(id));
+}
+
+export async function discover(value, {
+  query = '', courseIds = [], includeReplays = true,
+  profile, headless = false, onProgress = () => {},
+} = {}) {
   const entry = new URL(value);
   if (entry.protocol !== 'https:' || entry.hostname !== 'fanyalubodata.fanya.chaoxing.com' || !entry.pathname.startsWith('/starcloud/')) {
     throw new Error('课程发现需要原始智播课堂课程列表链接。');
@@ -79,10 +95,14 @@ export async function discover(value, { query = '', profile, headless = false, o
       await new Promise(r => setTimeout(r, 350));
       if (n === 200) throw new Error('课程分页超出合理范围。');
     }
-    if (!courses.length) throw new Error('没有找到匹配的课程。请核对课程关键词和学期。');
+    const selectedCourses = selectCourses(courses, courseIds);
+    if (!selectedCourses.length) throw new Error('没有找到匹配的课程。请核对课程列表和订阅 ID。');
+    if (!includeReplays) {
+      return { schemaVersion: 1, courses: selectedCourses.map(({ enc, ...c }) => c), replays: [] };
+    }
     const replays = [];
-    for (const course of courses) {
-      onProgress(`查找第 ${courses.indexOf(course) + 1}/${courses.length} 门课的回放`);
+    for (const [index, course] of selectedCourses.entries()) {
+      onProgress('查找第 ' + (index + 1) + '/' + selectedCourses.length + ' 门课的回放');
       const detail = new URL('/starcloud/getcoursehead', entry);
       detail.search = new URLSearchParams({ id: String(course.id), enc: course.enc, ut: 's', ischange: 'true' });
       const response = await context.request.get(detail.href);
@@ -101,7 +121,7 @@ export async function discover(value, { query = '', profile, headless = false, o
         if (n === 200) throw new Error('回放分页超出合理范围。');
       }
     }
-    return { schemaVersion: 1, courses: courses.map(({ enc, ...c }) => c),
+    return { schemaVersion: 1, courses: selectedCourses.map(({ enc, ...c }) => c),
       replays: [...new Map(replays.map(r => [String(r.speechId || r.url), r])).values()] };
   } finally { await context.close(); }
 }
