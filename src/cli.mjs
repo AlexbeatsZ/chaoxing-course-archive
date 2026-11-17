@@ -15,7 +15,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   out: { type: 'string' }, work: { type: 'string' }, fps: { type: 'string' }, 'min-stable': { type: 'string' },
   threshold: { type: 'string' }, crop: { type: 'string' }, duration: { type: 'string' }, help: { type: 'boolean' },
-  query: { type: 'string' }, headless: { type: 'boolean' }, profile: { type: 'string' },
+  'course-ids': { type: 'string' }, 'list-only': { type: 'boolean' }, headless: { type: 'boolean' }, profile: { type: 'string' },
 } });
 const [command, source] = positionals;
 const log = message => console.error(safeMessage(message));
@@ -57,7 +57,7 @@ async function main() {
   if (values.help || !command) return console.log(`课程归档工具
 
 node src/cli.mjs capture <回放链接> --out <两个最终文件的目录>
-node src/cli.mjs discover <平台课程列表链接> --query <课程名> --out <清单.json>
+node src/cli.mjs discover <平台课程列表链接> [--course-ids id1,id2] [--list-only] --out <清单.json>
 node src/cli.mjs batch <清单.json> --out <最终资料目录>
 node src/cli.mjs inspect <回放链接>
 node src/cli.mjs extract <本地视频> --work <已有字幕目录> --out <最终资料目录>
@@ -89,11 +89,16 @@ node src/cli.mjs build <已提取目录> --out <最终资料目录>
     console.log(JSON.stringify(await exportFiles(dir, lesson, output), null, 2));
   } else if (command === 'discover') {
     const { discover } = await import('./discover.mjs');
-    const manifest = await discover(source, { query: values.query || '', headless: values.headless,
-      profile: values.profile || join(root, 'local-data', 'browser-profile'), onProgress: log });
+    const manifest = await discover(source, {
+      courseIds: values['course-ids'] ? values['course-ids'].split(',').map(value => value.trim()).filter(Boolean) : [],
+      includeReplays: !values['list-only'],
+      headless: values.headless,
+      profile: values.profile || join(root, 'local-data', 'browser-profile'),
+      onProgress: log,
+    });
     const target = resolve(values.out || join(root, 'local-data', 'catalog.private.json'));
     await saveJson(target, manifest);
-    console.log(JSON.stringify({ file: target, courses: manifest.courses.length, replays: manifest.replays.length }));
+    console.log(JSON.stringify({ file: target, courses: manifest.courses, replays: manifest.replays.length }, null, 2));
   } else if (command === 'batch') {
     const manifest = JSON.parse(await readFile(resolve(source), 'utf8'));
     if (!Array.isArray(manifest.replays)) throw new Error('清单中没有 replays 数组。');
