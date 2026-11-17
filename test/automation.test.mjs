@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDecipheriv, pbkdf2Sync } from 'node:crypto';
-import { publishedReplays, courseRecordParameters } from '../src/discover.mjs';
+import { publishedReplays, courseRecordParameters, selectCourses } from '../src/discover.mjs';
 import { encryptLoginField, loginWithSecrets } from '../src/auth.mjs';
 import { encryptState, decryptState, statePassword, mergeState } from '../src/state.mjs';
 import { deliveryChannels, pendingReplays } from '../src/run.mjs';
@@ -20,6 +20,16 @@ test('discovery includes only playable published records', () => {
   const p = courseRecordParameters({ model: { jsgh: 'T', kcbh: 'C', fid: 30 } }, { id: 20, enc: 'signature' }, { xn: '2026', xq: '1' });
   assert.equal(p.jsgh, 'T'); assert.equal(p.fid, '30');
   assert.throws(() => courseRecordParameters({}, { id: 1 }, {}));
+});
+
+test('course selection uses platform course IDs, not course-name keywords', () => {
+  const courses = [
+    { id: 20, name: '物理化学' },
+    { id: 30, name: '无机化学' },
+  ];
+  assert.deepEqual(selectCourses(courses, ['30']).map(c => c.id), [30]);
+  assert.deepEqual(selectCourses(courses, []).map(c => c.id), [20, 30]);
+  assert.throws(() => selectCourses(courses, ['999']), /不在当前账号可访问/);
 });
 
 test('login encryption roundtrips with the official AES parameters', () => {
@@ -60,6 +70,8 @@ test('Actions default to an email-only test and keep course data out of public a
   const raw = await readFile(new URL('../.github/workflows/course.yml', import.meta.url), 'utf8');
   const workflow = YAML.parse(raw);
   assert.equal(workflow.on.workflow_dispatch.inputs.operation.default, 'mail-test');
+  assert.deepEqual(workflow.on.workflow_dispatch.inputs.operation.options, ['mail-test', 'discover', 'run', 'single']);
+  assert.equal(workflow.on.workflow_dispatch.inputs.course_ids.type, 'string');
   assert.match(workflow.jobs.course.if, /vars\.RUN_SCHEDULED == 'true'/);
   const mail = workflow.jobs.course.steps.find(s => s.name === 'Check email only');
   assert.equal(mail.run, 'node src/run.mjs --mail-test');
