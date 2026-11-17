@@ -75,7 +75,7 @@ test('Actions default to an email-only test and keep course data out of public a
   assert.match(workflow.jobs.course.if, /vars\.RUN_SCHEDULED == 'true'/);
   const mail = workflow.jobs.course.steps.find(s => s.name === 'Check email only');
   assert.equal(mail.run, 'node src/run.mjs --mail-test');
-  assert.equal(mail.if, "inputs.operation == 'mail-test'");
+  assert.equal(mail.if, "env.COURSE_OPERATION == 'mail-test'");
   assert.ok(!workflow.jobs.course.steps.some(s => s.uses?.startsWith('actions/upload-artifact')));
   for (const step of workflow.jobs.course.steps.filter(s => s.uses?.startsWith('actions/cache/'))) {
     assert.equal(step.with.path, 'local-data/state/delivery-state.enc');
