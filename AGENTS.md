@@ -3,15 +3,16 @@ Build a Chaoxing 智播课堂 course archive: discover published replays, use pl
 
 # Current State
 - Version 0.1.0-alpha.1, 2026-11-16 America/Los_Angeles. Node and uv project locks; existing FFmpeg/ffprobe on Mac. `local-data/` holds all private runtime material.
+- Public source: `AlexbeatsZ/chaoxing-course-archive`, default `main`. The first GitHub Actions run passed on Ubuntu; releases include code only.
 - Live platform: `fanyalubodata.fanya.chaoxing.com/starcloud`; replay player: `psp-zelda.chaoxing.com/vri-zelda`.
 - Browser course listing requires login. Replay HTML exposes signed metadata; its read-only transcript API returns fractional second timestamps.
 - Live sample: 50-minute, 1920x1080 PPT recording with 259 transcript segments. Platform PPT image API returns null, so extraction is needed. Automatic pipeline currently retains 55 distinct page images with all transcript segments assigned exactly once.
 - Implemented automatic extraction/cropping/deduplication, Word/PPTX, credential login/discovery, SMTP test and attachment delivery, optional ROG OneBot private files, and encrypted durable GitHub delivery receipts. Mail names are compatible with personal iCourse Subscriber.
 - Synthetic video smoke checks moving cursor, A-B-A revisits and actual Office file structure. Account/password cloud login, SMTP final delivery and physical ROG/QQ delivery require the user's actual configuration and remain unverified.
+- Verified final sample slide images and all 39 Word render pages. The final pair embeds 55 images in each and matches all 259 transcript segments. Local preview of Chinese text required a task-private Fontconfig alias from 宋体 to Songti SC; the generated Word uses the standard 宋体 font name.
 - Runtime source links, credentials, recordings, transcripts and generated artifacts belong in ignored `local-data/`. Never commit account details or signed URLs.
 
 # Active Work
-- Complete artifact visual QA, publish code and verify GitHub CI.
 - Actual production account/SMTP/QQ verification remains pending configuration; do not use unrelated stored credentials.
 - ROG deployment is available as code/documentation; no scheduled task has been installed on ROG.
 

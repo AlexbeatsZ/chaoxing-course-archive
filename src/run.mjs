@@ -9,6 +9,7 @@ import { inspectWithLogin } from './auth.mjs';
 import { saveJson } from './platform.mjs';
 import { sendEmail, sendQQ } from './delivery.mjs';
 import { loadRemoteState, saveRemoteState, statePassword } from './state.mjs';
+import { safeMessage } from './logging.mjs';
 
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -87,8 +88,8 @@ async function run() {
       } catch (e) {
         failures++;
         // Avoid echoing subprocess command strings containing signed URLs.
-        const message = e.stderr ? String(e.stderr).trim().split('\n').at(-1) : e.message;
-        console.error(`第 ${index + 1} 节失败：${message}`);
+        const message = e.stderr ? String(e.stderr).trim().split('\n').at(-1) : e.killed ? '处理子进程超时。' : e.message;
+        console.error(`第 ${index + 1} 节失败：${safeMessage(message)}`);
       }
     }
     if (failures) throw new Error(`${failures} 节处理或发送失败，成功记录已保存；重跑会继续未完成项。`);
@@ -97,5 +98,5 @@ async function run() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  run().catch(e => { console.error(e.message); process.exitCode = 1; });
+  run().catch(e => { console.error(safeMessage(e.stderr?.trim().split('\n').at(-1) || e.message)); process.exitCode = 1; });
 }

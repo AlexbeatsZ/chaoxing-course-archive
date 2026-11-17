@@ -79,7 +79,7 @@ export async function discover(value, { query = '', profile, headless = false, o
       await new Promise(r => setTimeout(r, 350));
       if (n === 200) throw new Error('课程分页超出合理范围。');
     }
-    if (!courses.length) throw new Error(`没有找到匹配的课程${query ? `：${query}` : ''}。`);
+    if (!courses.length) throw new Error('没有找到匹配的课程。请核对课程关键词和学期。');
     const replays = [];
     for (const course of courses) {
       onProgress(`查找第 ${courses.indexOf(course) + 1}/${courses.length} 门课的回放`);

@@ -22,7 +22,7 @@ This reconstructs rendered pages, not the original editable PPT source. The loca
 ## Automation and delivery
 The GitHub workflow takes account/password, source and SMTP settings from Secrets. An authenticated request context logs into the official Chaoxing endpoint and discovers published playable replays. A local browser profile is an optional ROG fallback. No speech, language or vision model is required.
 
-Each successful email/QQ delivery channel is recorded independently. GitHub durable state uses the iCourse-compatible encrypted `Salted__` envelope in `archive-state`, with normal optimistic Contents API updates. Failures to read/decrypt existing state stop work rather than treating it as a first run. Actions cache is an additional recovery copy, not the only durable source. The workflow never uploads course files as public artifacts.
+Each successful email/QQ delivery channel is recorded independently. GitHub durable state uses the iCourse-compatible encrypted `Salted__` envelope in `archive-state`, with normal optimistic Contents API updates. Failures to read/decrypt existing state stop work rather than treating it as a first run. The Actions cache contains only an encrypted recovery copy. The workflow never uploads course files as public artifacts and removes signed links and request dumps from error output.
 
 ## Verification
-Use a real 50-minute replay, visually inspect a contact sheet and representative full-resolution slides, and render representative PDF pages. Synthetic fixtures must cover a moving cursor, a short transition, a small text change, and A-B-A revisits. Document empirical limitations rather than claim universal slide recognition accuracy.
+Use a real replay and inspect rendered PPTX slides and Word pages. Validate the embedded image count and compare the Word text against the assigned platform segments. Synthetic fixtures cover a moving cursor, a short transition, a small text change, and A-B-A revisits.

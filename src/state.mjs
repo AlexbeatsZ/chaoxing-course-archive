@@ -1,5 +1,6 @@
 import { createHash, createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, rename } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { saveJson } from './platform.mjs';
 
 // Compatible port of icourse/src/data/crypto_box.py's ICSv2 envelope. This lets
@@ -31,7 +32,7 @@ export function mergeState(remote, local) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/${path}`, {
+  const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}${path ? `/${path}` : ''}`, {
     ...options, headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json',
       'Content-Type': 'application/json', ...options.headers }, signal: AbortSignal.timeout(60000) });
   if (response.status === 404 && options.allowMissing) return null;
@@ -40,16 +41,23 @@ async function api(path, options = {}) {
 }
 export async function loadRemoteState(path) {
   if (!process.env.GITHUB_TOKEN || !process.env.GITHUB_REPOSITORY) return;
+  const password = statePassword();
+  let cached;
+  try { cached = await readFile(join(dirname(path), 'delivery-state.enc')); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   const remote = await api('contents/delivery-state.enc?ref=archive-state', { allowMissing: true });
-  if (!remote) return;
-  const state = decryptState(Buffer.from(remote.content.replace(/\s/g, ''), 'base64'), statePassword());
+  if (!remote && !cached) return;
+  const state = remote ? decryptState(Buffer.from(remote.content.replace(/\s/g, ''), 'base64'), password) : { completed: {} };
   let local = { completed: {} };
   try { local = JSON.parse(await readFile(path, 'utf8')); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-  await saveJson(path, mergeState(state, local));
+  await saveJson(path, mergeState(cached ? mergeState(state, decryptState(cached, password)) : state, local));
 }
 export async function saveRemoteState(path) {
   if (!process.env.GITHUB_TOKEN || !process.env.GITHUB_REPOSITORY) return;
   const local = JSON.parse(await readFile(path, 'utf8'));
+  const password = statePassword();
+  const cache = join(dirname(path), 'delivery-state.enc');
+  await writeFile(cache + '.tmp', encryptState(local, password), { mode: 0o600 });
+  await rename(cache + '.tmp', cache);
   let branch = await api('git/ref/heads/archive-state', { allowMissing: true });
   if (!branch) {
     const info = await api('');
@@ -58,9 +66,9 @@ export async function saveRemoteState(path) {
   }
   for (let n = 0; n < 3; n++) {
     const remote = await api('contents/delivery-state.enc?ref=archive-state', { allowMissing: true });
-    const state = remote ? mergeState(decryptState(Buffer.from(remote.content.replace(/\s/g, ''), 'base64'), statePassword()), local) : local;
+    const state = remote ? mergeState(decryptState(Buffer.from(remote.content.replace(/\s/g, ''), 'base64'), password), local) : local;
     const payload = { message: 'chore(state): update encrypted delivery receipts', branch: 'archive-state',
-      content: encryptState(state, statePassword()).toString('base64'), ...(remote ? { sha: remote.sha } : {}) };
+      content: encryptState(state, password).toString('base64'), ...(remote ? { sha: remote.sha } : {}) };
     try { await api('contents/delivery-state.enc', { method: 'PUT', body: JSON.stringify(payload) }); return; }
     catch (e) { if (n === 2 || !/HTTP 409/.test(e.message)) throw e; }
   }

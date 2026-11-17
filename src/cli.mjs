@@ -9,6 +9,7 @@ import { writeTranscript, alignTranscript } from './transcript.mjs';
 import { prepareAutomatically } from './automatic.mjs';
 import { exportFiles } from './export.mjs';
 import { inspectWithLogin } from './auth.mjs';
+import { safeMessage } from './logging.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
@@ -17,7 +18,7 @@ const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   query: { type: 'string' }, headless: { type: 'boolean' }, profile: { type: 'string' },
 } });
 const [command, source] = positionals;
-const log = message => console.error(message);
+const log = message => console.error(safeMessage(message));
 const extractionOptions = () => ({ fps: values.fps, minStable: values['min-stable'],
   ...(values.threshold === undefined ? {} : { threshold: values.threshold }), crop: values.crop, duration: values.duration, onProgress: log });
 
@@ -105,4 +106,4 @@ node src/cli.mjs build <已提取目录> --out <最终资料目录>
   } else throw new Error(`未知命令 ${command}`);
 }
 
-main().catch(error => { console.error(error.message); process.exitCode = 1; });
+main().catch(error => { log(error.stderr?.trim().split('\n').at(-1) || error.message); process.exitCode = 1; });

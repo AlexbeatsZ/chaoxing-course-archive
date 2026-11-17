@@ -59,7 +59,7 @@ jobs:
         if: inputs.operation != 'mail-test'
         uses: actions/cache/restore@v6.1.0
         with:
-          path: local-data/state
+          path: local-data/state/delivery-state.enc
           key: course-receipts-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: course-receipts-
       - name: Check email only
@@ -76,8 +76,8 @@ jobs:
         if: inputs.operation != 'mail-test'
         run: node src/run.mjs
       - name: Preserve successful delivery receipts
-        if: always() && inputs.operation != 'mail-test' && hashFiles('local-data/state/delivery.json') != ''
+        if: always() && inputs.operation != 'mail-test' && hashFiles('local-data/state/delivery-state.enc') != ''
         uses: actions/cache/save@v6.1.0
         with:
-          path: local-data/state
+          path: local-data/state/delivery-state.enc
           key: course-receipts-${{ github.run_id }}-${{ github.run_attempt }}

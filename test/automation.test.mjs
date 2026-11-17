@@ -5,6 +5,7 @@ import { publishedReplays, courseRecordParameters } from '../src/discover.mjs';
 import { encryptLoginField, loginWithSecrets } from '../src/auth.mjs';
 import { encryptState, decryptState, statePassword, mergeState } from '../src/state.mjs';
 import { deliveryChannels, pendingReplays } from '../src/run.mjs';
+import { safeMessage } from '../src/logging.mjs';
 import { readFile } from 'node:fs/promises';
 import YAML from 'yaml';
 
@@ -65,6 +66,11 @@ test('Actions default to an email-only test and keep course data out of public a
   assert.equal(mail.if, "inputs.operation == 'mail-test'");
   assert.ok(!workflow.jobs.course.steps.some(s => s.uses?.startsWith('actions/upload-artifact')));
   for (const step of workflow.jobs.course.steps.filter(s => s.uses?.startsWith('actions/cache/'))) {
-    assert.equal(step.with.path, 'local-data/state');
+    assert.equal(step.with.path, 'local-data/state/delivery-state.enc');
   }
+});
+
+test('network logs hide signed URLs and Playwright request dumps', () => {
+  const log = 'apiRequestContext.get: timeout for https://school.example/replay?enc=token\nCall log:\n  - cookie: session-secret';
+  assert.equal(safeMessage(log), 'apiRequestContext.get: timeout for [链接已隐藏]');
 });
