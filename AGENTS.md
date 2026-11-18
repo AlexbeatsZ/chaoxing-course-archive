@@ -4,7 +4,7 @@ Build a student-facing Chaoxing 智播课堂 course archive: discover courses av
 
 # Current State
 
-- Version 0.1.0-alpha.5. Node and uv lockfiles are committed. Runtime-private data belongs under ignored `local-data/`.
+- Version 0.1.0-alpha.6. Node and uv lockfiles are committed. Runtime-private data belongs under ignored `local-data/`.
 - Public source repository: `AlexbeatsZ/chaoxing-course-archive`, default branch `main`.
 - Platform listing: `fanyalubodata.fanya.chaoxing.com/starcloud`; replay player: `psp-zelda.chaoxing.com/vri-zelda`.
 - Discovery reads the authenticated course list, uses `courseinfoid` as the course identifier, and `speechid` as the replay identifier. Do not use course names as persistent keys.
@@ -40,6 +40,7 @@ Build a student-facing Chaoxing 智播课堂 course archive: discover courses av
 - Course subscriptions and delivery receipts share the per-Fork `data` branch. Never create a shared upstream `data` branch containing a real student's course IDs.
 - A phone login can default to a different bound institution. The school portal and the authenticated course list identify the correct institution. The course list endpoint can return a successful empty result if the page's week or signed login-name parameter is omitted.
 - A replay can be playable while the transcript API still returns an empty array. Keep that replay pending, and keep early PPTX delivery receipts independently of final delivery receipts.
+- GitHub Contents has returned inline state bytes inconsistent with its SHA and size. Read the state through the immutable Git blob identified by the same SHA used for updates; do not reset existing receipts.
 
 # Docs Index
 
