@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDecipheriv, pbkdf2Sync } from 'node:crypto';
-import { publishedReplays, courseRecordParameters, selectCourses } from '../src/discover.mjs';
+import { publishedReplays, courseListParameters, courseRecordParameters, selectCourses } from '../src/discover.mjs';
 import { encryptLoginField, loginWithSecrets } from '../src/auth.mjs';
 import { encryptState, decryptState, statePassword, mergeState } from '../src/state.mjs';
 import { courseDiscoverySummary, deliveryChannels, pendingReplays } from '../src/run.mjs';
@@ -30,6 +30,22 @@ test('course selection uses platform course IDs, not course-name keywords', () =
   assert.deepEqual(selectCourses(courses, ['30']).map(c => c.id), [30]);
   assert.deepEqual(selectCourses(courses, []).map(c => c.id), [20, 30]);
   assert.throws(() => selectCourses(courses, ['999']), /不在当前账号可访问/);
+});
+
+test('course list requests retain the week and signed login name from the page', () => {
+  const html = `<input id="fid" value="123"><input id="xn" value="2026"><input id="xq" value="1">
+    <input id="djz" value="10"><input id="loginname" value="student"><input id="loginnameenc" value="sample&amp;signature">`;
+  const params = courseListParameters(html);
+  assert.equal(params.djz, '10');
+  assert.equal(params.loginname, 'student');
+  assert.equal(params.loginnameenc, 'sample&signature');
+  assert.equal(params.fid, '123');
+});
+
+test('course list diagnostics distinguish a disabled institution from a login page', () => {
+  const body = JSON.stringify({ status: false, msg: '当前单位123未开通服务，请联系管理员开通！' });
+  assert.throws(() => courseListParameters(body), /单位 123.*COURSE_FID/);
+  assert.throws(() => courseListParameters('<input id="fid" value="-1">'), /未进入智播课堂课程列表/);
 });
 
 test('login encryption roundtrips with the official AES parameters', () => {

@@ -48,7 +48,6 @@ export function courseDiscoverySummary(courses, repository) {
 }
 
 async function listCourses() {
-  if (!process.env.COURSE_ENTRY_URL) throw new Error('课程发现需要设置 COURSE_ENTRY_URL。');
   const catalog = await discover(process.env.COURSE_ENTRY_URL, {
     includeReplays: false,
     headless: process.env.COURSE_HEADLESS !== 'false',
@@ -95,8 +94,6 @@ async function run() {
   if (!courseIds.length) throw new Error(hosted
     ? '尚无订阅课程。请先执行 discover，再编辑 data 分支的 data/subscriptions.json。'
     : '尚无订阅课程。请先运行 node src/run.mjs --discover，再在 .env 填写 COURSE_IDS。');
-  if (!process.env.COURSE_ENTRY_URL) throw new Error('请设置 COURSE_ENTRY_URL 为智播课堂课程列表的完整链接。');
-
   const channels = deliveryChannels(process.env.DELIVERY);
   if (process.env.GITHUB_ACTIONS === 'true' && !channels.length) {
     throw new Error('Actions 请配置 DELIVERY=email；云端不会公开上传课程附件。');

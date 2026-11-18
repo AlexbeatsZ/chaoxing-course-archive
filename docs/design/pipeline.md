@@ -3,6 +3,8 @@
 ## Source and session boundary
 The user browses and logs in normally. Discovery saves a private catalog of courses or subscribed replays without exporting cookies or passwords. The internal lecture worker reads the signed replay URL from the subscription run’s private catalog, parses its JSON `args` declaration without evaluating JavaScript, and uses the same read-only endpoints as the player. Authentication failures remain explicit. A listing link is not itself a replay URL.
 
+The standard student list is the default entry. A configured list URL can override it if an institution requires a different entry or term. For an account bound to multiple institutions, `COURSE_FID` selects the institution during login. Read `djz` and `loginnameenc` from the authenticated page along with its term and role. The list endpoint may return an empty success response when either field is wrong or missing. Use the selected institution error to distinguish an unavailable service from an empty course list.
+
 ## Transcript
 Preserve platform segments, speaker labels and fractional seconds. Produce JSON, SRT, VTT and Markdown. Raw timestamps and playback-relative timestamps are distinct. Edited videos and nonzero offsets must follow the player's existing timestamp adjustment behavior. Match transcript ranges to each slide occurrence by interval overlap, allowing one segment to overlap more than one occurrence.
 

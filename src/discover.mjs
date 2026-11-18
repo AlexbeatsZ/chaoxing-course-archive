@@ -5,6 +5,27 @@ import { load } from 'cheerio';
 import { loginWithSecrets } from './auth.mjs';
 import { normalizeCourseIds } from './subscriptions.mjs';
 
+const COURSE_HOST = 'fanyalubodata.fanya.chaoxing.com';
+const DEFAULT_COURSE_ENTRY_URL = `https://${COURSE_HOST}/starcloud/list?type=2&ut=s`;
+
+export function courseListParameters(html) {
+  const $ = load(html);
+  const v = id => $(`#${id}`).first().attr('value') || '';
+  const fid = v('fid'), xn = v('xn'), xq = v('xq');
+  if (!/^[1-9]\d*$/.test(fid) || !xn || !xq) {
+    let result;
+    try { result = JSON.parse(html); } catch {}
+    const unit = result?.status === false && /^当前单位\s*(\d+)\s*未开通服务/.exec(result.msg);
+    if (unit) {
+      throw new Error(`超星当前选中了单位 ${unit[1]}，该单位未开通智播课堂。请从学校官方入口确认机构编号，账号密码模式请设置 COURSE_FID，浏览器模式请切换到正确单位。`);
+    }
+    throw new Error('未进入智播课堂课程列表。请在浏览器确认账号的当前单位和课程权限。若学校使用专用入口，可设置 COURSE_ENTRY_URL。');
+  }
+  return { fid, xn, xq, type: v('type') || '2', ut: v('ut') || 's', role: v('roleid'),
+    mycoursetype: v('mycoursetype'), loginname: v('loginname'), loginnameenc: v('loginnameenc'),
+    pagesize: '50', djz: v('djz') || '0' };
+}
+
 export function publishedReplays(records, course) {
   return records.filter(r => Number(r.status) === 3 && Number(r.respublish) === 1 && Number(r.isopen) !== 1 && r.pcplayerurl)
     .map(r => ({ course: course.name, courseId: course.id, speechId: r.speechid,
@@ -36,8 +57,8 @@ export async function discover(value, {
   courseIds = [], includeReplays = true,
   profile, headless = false, onProgress = () => {},
 } = {}) {
-  const entry = new URL(value);
-  if (entry.protocol !== 'https:' || entry.hostname !== 'fanyalubodata.fanya.chaoxing.com' || !entry.pathname.startsWith('/starcloud/')) {
+  const entry = new URL(String(value ?? '').trim() || DEFAULT_COURSE_ENTRY_URL);
+  if (entry.protocol !== 'https:' || entry.hostname !== COURSE_HOST || !entry.pathname.startsWith('/starcloud/')) {
     throw new Error('课程发现需要原始智播课堂课程列表链接。');
   }
   const secretsLogin = Boolean(process.env.COURSE_ACCOUNT && process.env.COURSE_PASSWORD);
@@ -54,29 +75,21 @@ export async function discover(value, {
   } else context = await chromium.launchPersistentContext(resolve(profile), { channel: 'chrome', headless,
     acceptDownloads: false, viewport: { width: 1280, height: 900 } });
   try {
-    let state;
+    let html;
     if (apiOnly) {
       const response = await context.request.get(entry.href);
-      const $ = load(await response.text());
-      const v = id => $(`[id="${id}"]`).first().attr('value') || '';
-      if (!v('fid')) throw new Error('已登录，但课程入口不可用。请更新 COURSE_ENTRY_URL 为本人当前可访问的课程列表链接。');
-      state = { fid: v('fid'), xn: v('xn'), xq: v('xq'), type: v('type') || '2', ut: v('ut') || 's',
-        role: v('roleid'), mycoursetype: v('mycoursetype'), loginname: v('loginname'), pagesize: '50', djz: '0' };
+      if (!response.ok()) throw new Error(`智播课堂入口请求失败 HTTP ${response.status()}。`);
+      html = await response.text();
     } else {
       const page = context.pages()[0] || await context.newPage();
       onProgress(headless ? '读取项目独立浏览器的登录环境' : '首次使用请在打开的 Chrome 中正常登录；程序将自动继续。');
       await page.goto(entry.href, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await page.waitForFunction(() => location.hostname === 'fanyalubodata.fanya.chaoxing.com' &&
-      (document.querySelector('#modellistDiv') || document.querySelector('.modellistDiv') || document.querySelector('a[onclick*="getcourseinfo"]')),
-      null, { timeout: headless ? 15000 : 300000 }).catch(() => { throw new Error('尚未进入已登录的课程列表。请先以非 headless 模式完成一次登录。'); });
-    // Use the site's own authenticated read endpoint. Keep the profile private
-    // inside local-data; no cookies are copied to the manifest or final files.
-      state = await page.evaluate(() => {
-      const v = id => document.getElementById(id)?.value ?? '';
-      return { fid: v('fid'), xn: v('xn'), xq: v('xq'), type: v('type') || '2', ut: v('ut') || 's',
-        role: v('roleid'), mycoursetype: v('mycoursetype'), loginname: v('loginname'), pagesize: '50', djz: '0' };
-      });
+      await page.waitForFunction(host => location.hostname === host &&
+        document.querySelector('#modellistDiv, .modellistDiv, a[onclick*="getcourseinfo"]'),
+      COURSE_HOST, { timeout: headless ? 15000 : 300000 }).catch(() => { throw new Error('尚未进入已登录的课程列表。请先以非 headless 模式完成一次登录。'); });
+      html = await page.content();
     }
+    const state = courseListParameters(html);
     const courses = [], seen = new Set();
     for (let n = 1; n <= 200; n++) {
       const response = await context.request.post(new URL('/starcloud/getmodellist-data', entry).href,
@@ -98,8 +111,8 @@ export async function discover(value, {
       await new Promise(r => setTimeout(r, 350));
       if (n === 200) throw new Error('课程分页超出合理范围。');
     }
+    if (!courses.length) throw new Error('智播课堂返回了空课程列表。请在浏览器核对当前单位、学期和课程权限。');
     const selectedCourses = selectCourses(courses, courseIds);
-    if (!selectedCourses.length) throw new Error('没有找到匹配的课程。请核对课程列表和订阅 ID。');
     if (!includeReplays) {
       return { schemaVersion: 1, courses: selectedCourses.map(({ enc, ...c }) => c), replays: [] };
     }

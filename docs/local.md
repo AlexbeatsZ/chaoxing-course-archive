@@ -13,7 +13,7 @@ uv sync --locked
 
 Windows PowerShell 执行 `Copy-Item .env.example .env`；macOS / Linux 执行 `cp .env.example .env`。
 
-在 `.env` 中填写智播课堂课程列表入口。普通账号登录可填写超星账号和密码；使用浏览器登录时，两项留空。按需要填写邮件或 QQ 发送配置。不要将 `.env` 提交到 GitHub。
+在 `.env` 中填写超星账号和密码，`COURSE_ENTRY_URL` 默认留空。账号默认进入另一个单位时，填写学校的 `COURSE_FID`，例如浙江财经大学使用 `2128`。使用浏览器登录时，账号和密码两项留空。按需要填写邮件或 QQ 发送配置。不要将 `.env` 提交到 GitHub。
 
 ## 查找课程名称与 ID
 
