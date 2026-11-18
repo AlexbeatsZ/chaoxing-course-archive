@@ -4,7 +4,7 @@ import { createDecipheriv, pbkdf2Sync } from 'node:crypto';
 import { publishedReplays, courseListParameters, courseRecordParameters, selectCourses } from '../src/discover.mjs';
 import { encryptLoginField, loginWithSecrets } from '../src/auth.mjs';
 import { encryptState, decryptState, statePassword, mergeState } from '../src/state.mjs';
-import { courseDiscoverySummary, deliveryChannels, pendingReplays } from '../src/run.mjs';
+import { courseDiscoverySummary, deliveryChannels, deliveryFiles, pendingReplays } from '../src/run.mjs';
 import { safeMessage } from '../src/logging.mjs';
 import { readFile } from 'node:fs/promises';
 import YAML from 'yaml';
@@ -80,6 +80,28 @@ test('incremental delivery continues the unfinished channel and prioritizes rece
   assert.deepEqual(pendingReplays(replays, state, ['email', 'qq']).map(r => r.speechId), [2, 1]);
   assert.deepEqual(deliveryChannels('both'), ['email', 'qq']);
   assert.throws(() => deliveryChannels('typo'));
+});
+
+test('pending transcripts wait until their next check after the PPTX is ready', () => {
+  const replays = [{ speechId: 1, date: '2026-10-01' }, { speechId: 2, date: '2026-10-02' }];
+  const retryAt = '2026-10-03T00:00:00.000Z';
+  const before = Date.parse(retryAt) - 1;
+  const state = { completed: { 1: { pptxBuilt: '2026-10-01', emailPptx: '2026-10-01', transcriptRetryAt: retryAt } } };
+  assert.deepEqual(pendingReplays(replays, state, [], before).map(r => r.speechId), [2]);
+  assert.deepEqual(pendingReplays(replays, state, ['email'], before).map(r => r.speechId), [2]);
+  assert.deepEqual(pendingReplays(replays, state, ['email', 'qq'], before).map(r => r.speechId), [2, 1]);
+  assert.deepEqual(pendingReplays(replays, state, ['email'], Date.parse(retryAt)).map(r => r.speechId), [1, 2]);
+});
+
+test('an existing PPTX receipt leaves only the Word attachment for that channel', () => {
+  const pptx = { pptx: 'slides.pptx' };
+  const complete = { ...pptx, docx: 'notes.docx' };
+  const done = { emailPptx: '2026-10-01' };
+  assert.deepEqual(deliveryFiles(pptx, {}, 'email'), ['slides.pptx']);
+  assert.deepEqual(deliveryFiles(pptx, done, 'email'), []);
+  assert.deepEqual(deliveryFiles(complete, done, 'email'), ['notes.docx']);
+  assert.deepEqual(deliveryFiles(complete, done, 'qq'), ['slides.pptx', 'notes.docx']);
+  assert.deepEqual(deliveryFiles(complete, { email: '2026-10-01' }, 'email'), []);
 });
 
 test('Actions default to course discovery and keep video processing separate', async () => {

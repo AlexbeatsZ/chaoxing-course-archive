@@ -70,12 +70,13 @@ export async function writeArtifactPptx(directory, lesson, target) {
   } else await (await PresentationFile.exportPptx(presentation)).save(target);
 }
 
-export async function exportFiles(directory, lesson, output) {
+export async function exportFiles(directory, lesson, output, { includeDocx = true } = {}) {
   await mkdir(output, { recursive: true });
   const stem = `${lesson.metadata.course}_${lesson.metadata.date}_第${lesson.metadata.lesson}节`.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_');
   const pptx = resolve(output, stem + '_课件.pptx'), docx = resolve(output, stem + '_图文讲义.docx');
   if (process.env.COURSE_ARTIFACT_MODULE) await writeArtifactPptx(directory, lesson, pptx);
   else await writePptx(directory, lesson, pptx);
+  if (!includeDocx) return { pptx };
   const python = process.env.COURSE_DOCX_PYTHON;
   const args = python ? [join(projectRoot, 'src/export_docx.py'), resolve(directory), docx]
     : ['run', '--locked', '--project', projectRoot, 'python', join(projectRoot, 'src/export_docx.py'), resolve(directory), docx];

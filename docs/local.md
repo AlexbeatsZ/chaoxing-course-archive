@@ -47,7 +47,7 @@ node src/run.mjs
 
 如果配置了邮箱，可先运行 `node src/run.mjs --mail-test`，确认能收到测试邮件。
 
-每节回放的最终文件保存在 `local-data/final/<回放编号>/`，包含一个 PPTX 和一个 DOCX。视频、字幕、浏览器配置和中间数据保存在被 Git 忽略的 `local-data/` 中。
+每节回放的最终文件保存在 `local-data/final/<回放编号>/`。有字幕时输出 PPTX 和 DOCX。平台暂时没有字幕时先输出 PPTX，并在本地记录待补状态。至少 48 小时后再次运行，程序会复查字幕并在可用时补生成 Word。视频、字幕、浏览器配置和中间数据保存在被 Git 忽略的 `local-data/` 中。
 
 | `DELIVERY` | 效果 |
 | --- | --- |

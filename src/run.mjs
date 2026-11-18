@@ -15,6 +15,7 @@ import { safeMessage } from './logging.mjs';
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL('../', import.meta.url));
 const catalogPath = join(root, 'local-data/catalog.private.json');
+const TRANSCRIPT_RETRY_MS = 48 * 60 * 60 * 1000;
 try { process.loadEnvFile(join(root, '.env')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
 export function deliveryChannels(value) {
@@ -23,12 +24,27 @@ export function deliveryChannels(value) {
   return mode === 'both' ? ['email', 'qq'] : mode === 'none' ? [] : [mode];
 }
 
-export function pendingReplays(replays, state, channels) {
+export function pendingReplays(replays, state, channels, now = Date.now()) {
+  const due = replay => {
+    const retryAt = Date.parse(state.completed?.[String(replay.speechId)]?.transcriptRetryAt);
+    return retryAt <= now ? retryAt : Infinity;
+  };
   return replays.filter(replay => {
-    const done = state.completed?.[String(replay.speechId)];
-    return !done || (channels.length ? channels.some(channel => !done[channel]) : !done.built);
-  }).sort((a, b) =>
-    String(b.date || '').localeCompare(String(a.date || '')) || Number(b.speechId) - Number(a.speechId));
+    const done = state.completed?.[String(replay.speechId)] || {};
+    const remaining = channels.filter(channel => !done[channel]);
+    if (channels.length ? !remaining.length : done.built) return false;
+    if (!(Date.parse(done.transcriptRetryAt) > now)) return true;
+    return channels.length ? remaining.some(channel => !done[`${channel}Pptx`]) : !done.pptxBuilt;
+  }).sort((a, b) => {
+    const aDue = due(a), bDue = due(b);
+    if (aDue !== bDue) return aDue < bDue ? -1 : 1;
+    return String(b.date || '').localeCompare(String(a.date || '')) || Number(b.speechId) - Number(a.speechId);
+  });
+}
+
+export function deliveryFiles(files, done, channel) {
+  if (done[channel]) return [];
+  return [done[`${channel}Pptx`] ? null : files.pptx, files.docx].filter(Boolean);
 }
 
 function displayName(name) {
@@ -156,25 +172,37 @@ async function run() {
       try {
         const dir = join(work, id);
         const out = join(output, id);
+        const done = state.completed[id] || {};
+        const pptxReady = channels.length ? channels.every(channel => done[channel] || done[`${channel}Pptx`]) : done.pptxBuilt;
+        const args = [join(root, 'src/archive-lecture.mjs'), runCatalogPath, id, dir, out];
+        if (pptxReady) args.push('--check-transcript');
         const child = exec(process.execPath,
-          [join(root, 'src/archive-lecture.mjs'), runCatalogPath, id, dir, out],
+          args,
           { cwd: root, maxBuffer: 8e6, timeout: 5 * 60 * 60 * 1000, env: process.env });
         child.child.stderr.on('data', chunk => process.stderr.write(chunk));
         const { stdout } = await child;
         const files = JSON.parse(stdout);
-        const attachments = [files.pptx, files.docx];
-        const done = state.completed[id] ||= {};
-        done.built = new Date().toISOString();
+        const timestamp = new Date().toISOString();
+        state.completed[id] = done;
+        if (files.pptx) done.pptxBuilt = timestamp;
+        if (files.docx) done.built = timestamp;
+        done.transcriptRetryAt = files.transcriptPending ? new Date(Date.now() + TRANSCRIPT_RETRY_MS).toISOString() : null;
         await saveJson(ledger, state);
+        if (files.transcriptPending) await saveRemoteState(ledger);
         for (const channel of channels) {
-          if (done[channel]) continue;
+          const attachments = deliveryFiles(files, done, channel);
+          if (!attachments.length) continue;
           if (channel === 'email') await sendEmail(attachments);
           else await sendQQ(attachments, output);
-          done[channel] = new Date().toISOString();
+          const receipt = files.docx ? channel : `${channel}Pptx`;
+          done[receipt] = new Date().toISOString();
           await saveJson(ledger, state);
           await saveRemoteState(ledger);
         }
-        console.log('第 ' + (index + 1) + ' 节完成：' + files.pages + ' 页课件，' + files.segments + ' 段讲解。');
+        if (files.transcriptPending) {
+          console.log('第 ' + (index + 1) + ' 节' + (files.pptx ? '已生成 PPTX。' : '已复查字幕。') +
+            '平台暂未提供讲解字幕，下次复查时间 ' + done.transcriptRetryAt + '。');
+        } else console.log('第 ' + (index + 1) + ' 节完成：' + files.pages + ' 页课件，' + files.segments + ' 段讲解。');
       } catch (error) {
         failures++;
         // Avoid echoing subprocess command strings containing signed URLs.

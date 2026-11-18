@@ -11,7 +11,7 @@ import { safeMessage } from './logging.mjs';
 const log = message => console.error(safeMessage(message));
 
 // Internal subprocess: the runner supplies a replay from its subscription catalog.
-async function archiveLecture(catalogPath, id, dir, output) {
+async function archiveLecture(catalogPath, id, dir, output, mode) {
   if (!catalogPath || !/^\d+$/.test(id || '') || !dir || !output) throw new Error('请通过课程订阅入口运行归档。');
   const catalog = JSON.parse(await readFile(catalogPath, 'utf8'));
   const replay = catalog.replays.find(item => String(item.speechId) === id);
@@ -19,6 +19,11 @@ async function archiveLecture(catalogPath, id, dir, output) {
   log('获取平台字幕和录屏信息（不使用语音模型）');
   const result = await inspectWithLogin(replay.url);
   if (String(result.metadata.speechId) !== id) throw new Error('回放与课程列表中的编号不一致。');
+  const transcriptPending = !result.transcript.some(segment => segment.text.trim());
+  if (transcriptPending && mode === '--check-transcript') {
+    console.log(JSON.stringify({ transcriptPending }));
+    return;
+  }
   await mkdir(dir, { recursive: true });
   await saveJson(join(dir, 'source.private.json'), result);
   await writeTranscript(dir, result.transcript, result.metadata);
@@ -42,8 +47,8 @@ async function archiveLecture(catalogPath, id, dir, output) {
   await saveJson(join(dir, 'timeline.json'), extracted);
   const lesson = await prepareAutomatically(dir);
   log(`自动整理完成：${lesson.pages.length} 页课件，${lesson.transcript.length} 段讲解`);
-  const files = await exportFiles(dir, lesson, output);
-  console.log(JSON.stringify({ ...files, pages: lesson.pages.length, segments: lesson.transcript.length }, null, 2));
+  const files = await exportFiles(dir, lesson, output, { includeDocx: !transcriptPending });
+  console.log(JSON.stringify({ ...files, transcriptPending, pages: lesson.pages.length, segments: lesson.transcript.length }, null, 2));
 }
 
 archiveLecture(...process.argv.slice(2)).catch(error => {

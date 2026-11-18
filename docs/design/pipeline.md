@@ -8,6 +8,8 @@ The standard student list is the default entry. A configured list URL can overri
 ## Transcript
 Preserve platform segments, speaker labels and fractional seconds. Produce JSON, SRT, VTT and Markdown. Raw timestamps and playback-relative timestamps are distinct. Edited videos and nonzero offsets must follow the player's existing timestamp adjustment behavior. Match transcript ranges to each slide occurrence by interval overlap, allowing one segment to overlap more than one occurrence.
 
+When the transcript endpoint succeeds but contains no nonblank text, export PPTX and defer DOCX. Keep the next check time in the existing local or encrypted remote ledger. A check is due 48 hours later and is prioritized before new replays. If the PPTX is already ready for every active destination, an empty recheck ends before downloading video. A request error remains a failure.
+
 ## Recording
 Choose `speech.videos[].type === 'ppt'` by default. Retain source metadata privately. Download via streaming HTTP into a `.part` file and resume only after validating HTTP range responses and total size. Never treat an HTML login/error document as a video. Probe streams after download. If PPT video has no audio, the transcript remains usable; an optional separate teacher stream can supply audio later.
 
@@ -25,6 +27,8 @@ This reconstructs rendered pages, not the original editable PPT source. The loca
 The GitHub workflow takes account/password, source and SMTP settings from Secrets. An authenticated request context logs into the official Chaoxing endpoint and discovers published playable replays. For local runs, users can sign in with a browser profile. No speech, language or vision model is required.
 
 Each successful email/QQ delivery channel is recorded independently. Persistent course selection lives in `data/subscriptions.json` on each user's own `data` branch; IDs are Chaoxing `courseinfoid` values. The discovery summary pairs each course name with its ID and links to the editor for the current Fork. All archive runs use the saved subscription IDs. Encrypted delivery receipts live beside the manifest at `data/delivery-state.enc`, using the existing `Salted__` envelope and optimistic Contents API updates. The old `archive-state/delivery-state.enc` is read as a migration source. Failures to read/decrypt existing state stop work rather than treating it as a first run. The Actions cache contains only an encrypted recovery copy. The workflow never uploads course files as public artifacts and removes signed links and request dumps from error output.
+
+Each channel records an early PPTX receipt separately from the existing final delivery receipt. On final delivery, a channel with an early PPTX receipt only receives DOCX. The existing `built`, `email` and `qq` completion records retain their meaning and continue to suppress completed work.
 
 ## Verification
 Use a real replay and inspect rendered PPTX slides and Word pages. Validate the embedded image count and compare the Word text against the assigned platform segments. Synthetic fixtures cover a moving cursor, a short transition, a small text change, and A-B-A revisits.
