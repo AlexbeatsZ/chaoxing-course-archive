@@ -4,7 +4,7 @@ Build a student-facing Chaoxing 智播课堂 course archive: discover courses av
 
 # Current State
 
-- Version 0.1.0-alpha.6. Node and uv lockfiles are committed. Runtime-private data belongs under ignored `local-data/`.
+- Version 0.1.0-alpha.7. Node and uv lockfiles are committed. Runtime-private data belongs under ignored `local-data/`.
 - Public source repository: `AlexbeatsZ/chaoxing-course-archive`, default branch `main`.
 - Platform listing: `fanyalubodata.fanya.chaoxing.com/starcloud`; replay player: `psp-zelda.chaoxing.com/vri-zelda`.
 - Discovery reads the authenticated course list, uses `courseinfoid` as the course identifier, and `speechid` as the replay identifier. Do not use course names as persistent keys.
