@@ -50,4 +50,5 @@ Build a student-facing Chaoxing 智播课堂 course archive: discover courses av
 - `docs/design/icourse-reuse.md`: subscription and persistence architecture decisions.
 - `docs/email-setup.md`: SMTP, course discovery, subscription setup, and troubleshooting.
 - `docs/local.md`: local run and optional QQ delivery.
+- `docs/maintenance/README.md`: routine operation, missed-delivery diagnosis, and safe retry.
 - `docs/wechat-relay.md`: encrypted cloud handoff and optional Windows WeChat forwarding.

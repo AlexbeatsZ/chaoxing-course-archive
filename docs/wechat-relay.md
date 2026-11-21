@@ -2,6 +2,8 @@
 
 GitHub Actions 登录超星、识别课件、生成 PPTX 和 Word，再把加密附件放入本次运行的 **Artifacts**。Windows 电脑只下载、解密、发送。Windows 无需安装 FFmpeg 或语音模型，也无需填超星账号密码。
 
+日常操作和未收到附件的排查顺序见[维护说明](maintenance/README.md)。
+
 ## 在 GitHub 设置
 
 1. 在自己的 Fork 完成 `discover` 和课程订阅。先完成本机配置，再切换发送方式。
