@@ -59,7 +59,7 @@ async function getArtifacts(config) {
   return results.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id);
 }
 
-async function downloadArtifact(config, artifact, path) {
+export async function downloadArtifact(config, artifact, path) {
   // Fetch the signed download separately so the repository token never goes to storage.
   const response = await fetch(`${API}/repos/${config.repository}/actions/artifacts/${artifact.id}/zip`, {
     headers: { Authorization: `Bearer ${config.githubToken}`, Accept: 'application/vnd.github+json' },
@@ -68,7 +68,7 @@ async function downloadArtifact(config, artifact, path) {
   if (response.status !== 302) throw new Error(`GitHub 产物 ${artifact.id} 下载失败（${response.status}）。`);
   const signed = new URL(response.headers.get('location'));
   if (signed.protocol !== 'https:') throw new Error('GitHub 下载链接不是 HTTPS。');
-  const downloaded = await fetch(signed, { redirect: 'error', signal: AbortSignal.timeout(15 * 60 * 1000) });
+  const downloaded = await fetch(signed, { redirect: 'error', signal: AbortSignal.timeout(2 * 60 * 60 * 1000) });
   if (!downloaded.ok || !downloaded.body) throw new Error(`GitHub 产物 ${artifact.id} 下载未完成。`);
   let length = 0;
   const limit = new Transform({ transform(chunk, _encoding, callback) {

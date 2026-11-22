@@ -1,11 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { deliverRelayFile } from '../scripts/wechat-relay.mjs';
+import { deliverRelayFile, downloadArtifact } from '../scripts/wechat-relay.mjs';
 import { openRelay, relayFilename, sealRelay } from '../src/relay-envelope.mjs';
 
 const meta = { replay: '1234', kind: 'pptx', name: '示例课件.pptx' };
 const content = Buffer.from('test lecture data');
+
+test('relay gives the entire download two hours and cleans up an interrupted body', async t => {
+  const { mkdtemp, readFile, rm, access } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'relay-download-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const timeouts = [];
+  const signal = new AbortController().signal;
+  t.mock.method(AbortSignal, 'timeout', milliseconds => { timeouts.push(milliseconds); return signal; });
+  let interrupted = false;
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (String(url).startsWith('https://api.github.com/')) {
+      assert.equal(options.headers.Authorization, 'Bearer test-only-token');
+      assert.equal(options.redirect, 'manual');
+      return new Response(null, { status: 302, headers: { location: 'https://storage.example/archive.zip' } });
+    }
+    assert.equal(String(url), 'https://storage.example/archive.zip');
+    assert.equal(options.headers, undefined);
+    assert.equal(options.redirect, 'error');
+    assert.equal(options.signal, signal);
+    let sent = false;
+    return new Response(new ReadableStream({ pull(controller) {
+      if (!sent) { sent = true; controller.enqueue(content); }
+      else if (interrupted) controller.error(new DOMException('Timed out', 'TimeoutError'));
+      else controller.close();
+    } }));
+  });
+  const config = { repository: 'example/course-archive', githubToken: 'test-only-token' };
+  const path = join(dir, '123.zip');
+  await downloadArtifact(config, { id: 123 }, path);
+  assert.deepEqual(timeouts, [30000, 7200000]);
+  assert.deepEqual(await readFile(path), content);
+  await assert.rejects(access(path + '.part'), { code: 'ENOENT' });
+  interrupted = true;
+  const failedPath = join(dir, '456.zip');
+  await assert.rejects(downloadArtifact(config, { id: 456 }, failedPath), { name: 'TimeoutError' });
+  await assert.rejects(access(failedPath), { code: 'ENOENT' });
+  await assert.rejects(access(failedPath + '.part'), { code: 'ENOENT' });
+});
 
 test('relay hides the lecture metadata and rejects modified ciphertext or wrong keys', () => {
   const key = randomBytes(32);
