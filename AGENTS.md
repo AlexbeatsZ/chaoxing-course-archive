@@ -4,7 +4,7 @@ Build a student-facing Chaoxing 智播课堂 course archive: discover courses av
 
 # Current State
 
-- Version 0.1.0-alpha.10. Node and uv lockfiles are committed. Runtime-private data belongs under ignored `local-data/`.
+- Version 0.1.0-alpha.11. Node and uv lockfiles are committed. Runtime-private data belongs under ignored `local-data/`.
 - Public source repository: `AlexbeatsZ/chaoxing-course-archive`, default branch `main`.
 - Platform listing: `fanyalubodata.fanya.chaoxing.com/starcloud`; replay player: `psp-zelda.chaoxing.com/vri-zelda`.
 - Discovery reads the authenticated course list, uses `courseinfoid` as the course identifier, and `speechid` as the replay identifier. Do not use course names as persistent keys.
@@ -15,6 +15,8 @@ Build a student-facing Chaoxing 智播课堂 course archive: discover courses av
 - Live sample: 50-minute, 1920x1080 PPT recording with 259 transcript segments. Platform PPT image API returns null, so slide extraction from the recording is required. Automatic pipeline retained 55 distinct page images and assigned all transcript segments exactly once.
 - `DELIVERY=relay` uploads encrypted PPTX/DOCX artifacts and records cloud handoff only after upload. The optional Windows relay downloads and sends through a loopback WeChat service; its local state is separate from cloud handoff receipts.
 - Relay artifact downloads allow 2 hours per package; the installer gives the Windows task 4 hours total. Update existing task settings in place to preserve custom triggers and proxy launchers.
+- Output names are `<course> 课件 NN.pptx` / `<course> 讲义 NN.docx`, numbered per course by date, lesson and speechId. Naming revision 2 nulls older receipts (backup `*V1`) so every delivered lecture is resent once; relay tracks `replay:kind:r2` separately. Update the Windows relay before syncing the Fork.
+- A failing lecture records `failedSince` and only warns; after 7 days it is skipped. Transcript rechecks stop 7 days after the PPTX was first built.
 - Implemented automatic extraction/cropping/deduplication, PPTX/DOCX generation, account/password login, browser-profile login, SMTP delivery, optional local OneBot/NapCat delivery, and encrypted GitHub delivery receipts.
 - Synthetic video smoke checks cover moving cursor, A-B-A revisits, Office file structure, and transcript completeness. Real course discovery passed both locally and on GitHub Actions. A replay with an empty platform transcript exports PPTX now and records a 48-hour check for DOCX. SMTP receipt and QQ delivery still require acceptance tests.
 - Never commit credentials, browser profiles, signed URLs, recordings, transcripts, generated documents, or private catalogs.

@@ -105,7 +105,7 @@ test('relay sends an ordinary ZIP and remembers both members without resending',
     assert.ok(Object.values(state.files).every(entry => entry.status === 'sending'));
     const out = join(dir, 'received.zip');
     await writeFile(out, data);
-    assert.deepEqual(execFileSync(tar, ['-tf', out], { encoding: 'utf8' }).trim().split(/\r?\n/),
+    assert.deepEqual(execFileSync(tar, ['-tf', out], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'en_US.UTF-8' } }).trim().split(/\r?\n/),
       metas.map(item => item.replay + '-' + item.name));
     for (const item of metas) assert.deepEqual(execFileSync(tar, ['-xOf', out, item.replay + '-' + item.name]), content);
   };
@@ -113,4 +113,36 @@ test('relay sends an ordinary ZIP and remembers both members without resending',
   assert.ok(state.artifacts[123]);
   assert.equal(Object.values(state.files).filter(entry => entry.status === 'sent').length, 2);
   assert.deepEqual(zipGroups([{ bytes: 6 }, { bytes: 6 }, { bytes: 3 }], 10).map(g => g.length), [1, 2]);
+});
+
+test('renamed files are resent beside earlier deliveries under their own names', async t => {
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { processArtifact } = await import('../scripts/wechat-relay.mjs');
+  const tar = process.platform === 'win32' ? join(process.env.SystemRoot, 'System32', 'tar.exe') : process.platform === 'darwin' ? 'tar' : 'bsdtar';
+  const dir = await mkdtemp(join(tmpdir(), 'relay-r2-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const key = randomBytes(32);
+  const metas = [{ replay: '1234', kind: 'pptx', name: '物理化学 课件 01.pptx', revision: 2 },
+    { replay: '1234', kind: 'docx', name: '物理化学 讲义 01.docx', revision: 2 }];
+  const names = [];
+  for (const entry of metas) {
+    names.push(relayFilename(key, entry.replay, entry.kind));
+    await writeFile(join(dir, names.at(-1)), sealRelay(key, entry, content));
+  }
+  const archive = join(dir, '124.zip');
+  execFileSync(tar, ['-a', '-cf', archive, '-C', dir, '--', ...names]);
+  const state = { files: { '1234:pptx': { status: 'sent' }, '1234:docx': { status: 'sent' } }, artifacts: {} };
+  const received = [];
+  const send = async ({ data }) => {
+    const out = join(dir, 'received.zip');
+    await writeFile(out, data);
+    received.push(...execFileSync(tar, ['-tf', out], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'en_US.UTF-8' } }).trim().split(/\r?\n/));
+  };
+  assert.equal(await processArtifact({}, key, { id: 124 }, dir, state, () => {}, send), false);
+  assert.deepEqual(received, ['物理化学 课件 01.pptx', '物理化学 讲义 01.docx']);
+  assert.equal(state.files['1234:pptx:r2'].status, 'sent');
+  assert.equal(state.files['1234:docx:r2'].status, 'sent');
 });
